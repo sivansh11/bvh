@@ -14,10 +14,11 @@ namespace bvh
     struct Ray
     {
         Ray() = default;
-        Ray(vec3 &origin, vec3 &direction) : origin(origin), direction(direction) {}
-        Ray(vec3 &&origin, vec3 &&direction) : origin(origin), direction(direction) {}
+        Ray(vec3 &origin, vec3 &direction) : origin(origin), direction(direction), invDirection(1.0f / direction.x, 1.0f / direction.y, 1.0f / direction.z) {}
+        Ray(vec3 &&origin, vec3 &&direction) : origin(origin), direction(direction), invDirection(1.0f / direction.x, 1.0f / direction.y, 1.0f / direction.z) {}
         vec3 origin;
         vec3 direction;
+        vec3 invDirection;
         float t = FLT_MAX;
         PayLoad data;
     };
@@ -154,7 +155,6 @@ namespace bvh
                 {
                     if (Primitive::intersect(primitives[primitiveIDs[node.leftFirst + i]], primitive))
                         anyIntersection = true;
-                    
                 }
             }
             else
@@ -246,7 +246,6 @@ namespace bvh
         {
             BvhNode &node = bvhNodes[nodeID];
             if (node.primitiveCount <= 2) return;
-            vec3 extent = node.box.max - node.box.min;
 
             int bestAxis = -1;
             float bestPos = 0, bestCost = FLT_MAX;
@@ -265,7 +264,8 @@ namespace bvh
             int axis = bestAxis;
             int splitPos = bestPos;
 
-            float parentArea = node.box.area();
+            vec3 extent = node.box.max - node.box.min;
+            float parentArea = extent.x * extent.y + extent.y * extent.z + extent.z * extent.x;
             float parentCost = node.primitiveCount * parentArea;
 
             if (bestCost >= parentCost) return;

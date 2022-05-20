@@ -1,5 +1,5 @@
 #include "bvh.h"
-#include "triangle_triangle_intersection.h"
+// #include "triangle_triangle_intersection.h"
 #include "timer.h"
 
 #include <iostream>
@@ -63,13 +63,13 @@ struct Triangle
     }
 
     // this intersect function is used to detect primitive-primitive intersect (in this case Triangle-Triangle)
-    static bool intersect(const Triangle &tri1, const Triangle &tri2)
-    {
-        float t[3];
-        float s[3];
-        int isCoplaner;
-        return tri_tri_intersection_test_3d((float*)(&tri1.vert0), (float*)(&tri1.vert1), (float*)(&tri1.vert2), (float*)(&tri2.vert0), (float*)(&tri2.vert1), (float*)(&tri2.vert2), &isCoplaner, s, t);
-    }
+    // static bool intersect(const Triangle &tri1, const Triangle &tri2)
+    // {
+    //     float t[3];
+    //     float s[3];
+    //     int isCoplaner;
+    //     return tri_tri_intersection_test_3d((float*)(&tri1.vert0), (float*)(&tri1.vert1), (float*)(&tri1.vert2), (float*)(&tri2.vert0), (float*)(&tri2.vert1), (float*)(&tri2.vert2), &isCoplaner, s, t);
+    // }
 };  
 
 void colorConversion(uint32_t col, uint8_t *newCol)
@@ -124,26 +124,29 @@ int main()
     vec3 p0{-1, 1, -2}, p1{1, 1, -2}, p2{-1, -1, -2};
 
     timer.from();
-    for (int i=0; i<width; i++) for (int j=0; j<height; j++)
+    for (int i=0; i<width; i+=4) for (int j=0; j<height; j+=4)
     {
-        vec3 pixelPos = p0 + (p1 - p0) * (float(i) / width) + (p2 - p0) * (float(j) / height);
-        bvh::Ray<PayLoad> r;
-        r.origin = camPos;
-        r.direction = glm::normalize(pixelPos - camPos);
-        r.data = PayLoad{};
-        bvh.intersect(r);
-        // for (int i=0; i<N; i++)
-        // {
-        //     Triangle::intersect(r, tris[i]);
-        // }
-        if (r.t != FLT_MAX)
+        for (int v=0; v<4; v++) for (int u=0; u<4; u++)
         {
-            vec3 col = r.data.col;
-            data[j * width + i] = color(col.r, col.g, col.b, 255);
-        }
-        else
-        {
-            data[j * width + i] = 0;
+            vec3 pixelPos = p0 + (p1 - p0) * (float(i + v) / width) + (p2 - p0) * (float(j + u) / height);
+            bvh::Ray<PayLoad> r;
+            r.origin = camPos;
+            r.direction = glm::normalize(pixelPos - camPos);
+            r.data = PayLoad{};
+            bvh.intersect(r);
+            // for (int i=0; i<N; i++)
+            // {
+            //     Triangle::intersect(r, tris[i]);
+            // }
+            if (r.t != FLT_MAX)
+            {
+                vec3 col = r.data.col;
+                data[(j + u) * width + (i + v)] = color(col.r, col.g, col.b, 255);
+            }
+            else
+            {
+                data[(j + u) * width + (i + v)] = 0;
+            }
         }
     }
     std::cerr << "Image render took: " << (timer.now() / 1000) << '\n'; 
