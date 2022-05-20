@@ -40,7 +40,7 @@ namespace bvh
             return extent.x * extent.y + extent.y * extent.z + extent.z * extent.x;
         }
         template <typename PayLoad>
-        bool intersect(const Ray<PayLoad> &ray)
+        float intersect(const Ray<PayLoad> &ray)
         {
             float tx1 = (min.x - ray.origin.x) / ray.direction.x, tx2 = (max.x - ray.origin.x) / ray.direction.x;
             float tmin = glm::min(tx1, tx2), tmax = glm::max(tx1, tx2);
@@ -48,7 +48,9 @@ namespace bvh
             tmin = glm::max(tmin, glm::min(ty1, ty2)), tmax = glm::min(tmax, glm::max(ty1, ty2));
             float tz1 = (min.z - ray.origin.z) / ray.direction.z, tz2 = (max.z - ray.origin.z) / ray.direction.z;
             tmin = glm::max(tmin, glm::min(tz1, tz2)), tmax = glm::min(tmax, glm::max(tz1, tz2));
-            return tmax >= tmin && tmin < ray.t && tmax > 0;
+            if (tmax >= tmin && tmin < ray.t && tmax > 0) return tmin;
+            else
+                return FLT_MAX;
         }
         bool intersect(const BoundingBox &box)
         {
@@ -77,8 +79,14 @@ namespace bvh
             BVH::primitives = primitives;
             buildBVH();
         }
+
+        void BVH_SAH_builder(std::vector<Primitive> &primitive)
+        {
+            BVH::primitives = primitive;
+            buildSAH();
+        }
         template <typename PayLoad>
-        bool intersect(Ray<PayLoad> &ray)
+        void intersect(Ray<PayLoad> &ray)
         {
             return intersect(ray, rootNodeID);
         }
@@ -90,27 +98,70 @@ namespace bvh
         }
     private:
         template <typename PayLoad>
-        bool intersect(Ray<PayLoad> &ray, const uint nodeID)
+        void intersect(Ray<PayLoad> &ray, const uint nodeID)
         {
-            bool anyIntersection = false;
-            BvhNode &node = bvhNodes[nodeID];
-            if (!node.box.intersect(ray)) return anyIntersection;
-            if (node.isLeaf())
+            BvhNode *node = &bvhNodes[nodeID], *stack[64];
+            uint stackPtr = 0;
+            while (true)
             {
-                for (uint i = 0; i < node.primitiveCount; i++)
+                if (node->isLeaf())
                 {
-                    if (Primitive::intersect(ray, primitives[primitiveIDs[node.leftFirst + i]]))
-                        anyIntersection = true;   
+                    for (uint i = 0; i < node->primitiveCount; i++)
+                    {
+                        Primitive::intersect(ray, primitives[primitiveIDs[node->leftFirst + i]]);
+                    }
+                    if (stackPtr == 0)
+                        break;
+                    else
+                    {
+                        node = stack[--stackPtr];
+                    }
+                    continue;
+                }
+                BvhNode *child1 = &bvhNodes[node->leftFirst];
+                BvhNode *child2 = &bvhNodes[node->leftFirst + 1];
+                float dist1 = child1->box.intersect(ray);
+                float dist2 = child2->box.intersect(ray);
+                if (dist1 > dist2) 
+                { 
+                    std::swap(dist1, dist2); 
+                    std::swap(child1, child2); 
+                }
+                if (dist1 == FLT_MAX)
+                {
+                    if (stackPtr == 0) 
+                        break;
+                    else 
+                        node = stack[--stackPtr];
+                    
+                }
+                else
+                {
+                    node = child1;
+                    if (dist2 != FLT_MAX) 
+                        stack[stackPtr++] = child2;
                 }
             }
-            else
-            {
-                if (intersect(ray, node.leftFirst))
-                    anyIntersection = true;
-                if (intersect(ray, node.leftFirst + 1))
-                    anyIntersection = true;
-            }
-            return anyIntersection;
+            
+            // bool anyIntersection = false;
+            // BvhNode &node = bvhNodes[nodeID];
+            // if (!node.box.intersect(ray)) return anyIntersection;
+            // if (node.isLeaf())
+            // {
+            //     for (uint i = 0; i < node.primitiveCount; i++)
+            //     {
+            //         if (Primitive::intersect(ray, primitives[primitiveIDs[node.leftFirst + i]]))
+            //             anyIntersection = true;   
+            //     }
+            // }
+            // else
+            // {
+            //     if (intersect(ray, node.leftFirst))
+            //         anyIntersection = true;
+            //     if (intersect(ray, node.leftFirst + 1))
+            //         anyIntersection = true;
+            // }
+            // return anyIntersection;
         }
 
         bool intersect(const BoundingBox &box, const Primitive &primitive, uint nodeID)
@@ -187,6 +238,88 @@ namespace bvh
             subdivideBVH(leftChildID);
             subdivideBVH(rightChildID);
         }
+
+        float evaluateSAH(BvhNode &node, int axis, float pos)
+        {
+            BoundingBox leftBox, rightBox;
+            int leftCount = 0, rightCount = 0;
+            for (uint i = 0; i < node.primitiveCount; i++)
+            {
+                Primitive &primitive = primitives[primitiveIDs[node.leftFirst + i]];
+                BoundingBox box;
+                Primitive::boundingBox(primitive, box.min, box.max);
+                if (Primitive::centroid(primitive)[axis] < pos)
+                {
+                    leftCount++;
+                    leftBox.grow(box);
+                }
+                else
+                {
+                    rightCount++;
+                    rightBox.grow(box);
+                }
+            }
+            float cost = leftCount * leftBox.area() + rightCount * rightBox.area();
+            return cost > 0 ? cost : FLT_MAX;
+        }
+
+        void subdivideSAH(uint nodeID)
+        {
+            BvhNode &node = bvhNodes[nodeID];
+            if (node.primitiveCount <= 2) return;
+            vec3 extent = node.box.max - node.box.min;
+
+            int bestAxis = -1;
+            float bestPos = 0, bestCost = FLT_MAX;
+            for (int axis = 0; axis < 3; axis++) for (uint i = 0; i < node.primitiveCount; i++)
+            {
+                Primitive &primitive = primitives[primitiveIDs[node.leftFirst + i]];
+                float candidatePos = Primitive::centroid(primitive)[axis];
+                float cost = evaluateSAH(node, axis, candidatePos);
+                if (cost < bestCost)
+                {
+                    bestPos = candidatePos;
+                    bestAxis = axis;
+                    bestCost = cost;
+                }
+            }
+            int axis = bestAxis;
+            int splitPos = bestPos;
+
+            float parentArea = node.box.area();
+            float parentCost = node.primitiveCount * parentArea;
+
+            if (bestCost >= parentCost) return;
+
+            uint i = node.leftFirst;               // first primitive
+            uint j = i + node.primitiveCount - 1;  // last primitive
+
+            while (i <= j)
+            {
+                if (Primitive::centroid(primitives[primitiveIDs[i]])[axis] < splitPos)
+                    i++;
+                else
+                    std::swap(primitiveIDs[i], primitiveIDs[j--]);    
+            }
+            uint leftCount = i - node.leftFirst;
+            if (leftCount == 0 || leftCount == node.primitiveCount) return;
+
+            uint leftChildID = nodesUsed++;
+            uint rightChildID = nodesUsed++;
+
+            bvhNodes[leftChildID].leftFirst = node.leftFirst;
+            bvhNodes[leftChildID].primitiveCount = leftCount;
+            bvhNodes[rightChildID].leftFirst = i;
+            bvhNodes[rightChildID].primitiveCount = node.primitiveCount - leftCount;
+            node.leftFirst = leftChildID;
+            node.primitiveCount = 0;
+            
+            updateNodeBound(leftChildID);
+            updateNodeBound(rightChildID);
+            
+            subdivideSAH(leftChildID);
+            subdivideSAH(rightChildID);
+        }
         
         void buildBVH()
         {
@@ -198,6 +331,18 @@ namespace bvh
             rootNode.primitiveCount = primitives.size();
             updateNodeBound(rootNodeID);
             subdivideBVH(rootNodeID);
+        }
+
+        void buildSAH()
+        {
+            primitiveIDs.resize(primitives.size());
+            for (int i = 0; i < primitives.size(); i++) primitiveIDs[i] = i;
+            bvhNodes.resize(primitives.size() * 2);
+            BvhNode &rootNode = bvhNodes[rootNodeID];
+            rootNode.leftFirst = 0;
+            rootNode.primitiveCount = primitives.size();
+            updateNodeBound(rootNodeID);
+            subdivideSAH(rootNodeID);
         }
 
     private:

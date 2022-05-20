@@ -1,7 +1,9 @@
 #include "bvh.h"
 #include "triangle_triangle_intersection.h"
+#include "timer.h"
 
 #include <iostream>
+#include <random>
 
 // extra data that is attached to a ray
 struct PayLoad
@@ -22,27 +24,26 @@ struct Triangle
     // every primitive must have 3 functions defined (4th is optional for primitive-primitive intersection, example triangle-triangle intersection)
 
     // intersect function intersects a ray to the primitve, this is where you can add extra information to the ray
-    static bool intersect(bvh::Ray<PayLoad> &ray, const Triangle &tri)
+    static void intersect(bvh::Ray<PayLoad> &ray, const Triangle &tri)
     {
         const vec3 edge1 = tri.vert1 - tri.vert0;
         const vec3 edge2 = tri.vert2 - tri.vert0;
         const vec3 h = glm::cross( ray.direction, edge2 );
         const float a = dot( edge1, h );
-        if (a > -0.0001f && a < 0.0001f) return false; // ray parallel to triangle
+        if (a > -0.0001f && a < 0.0001f) return; // ray parallel to triangle
         const float f = 1 / a;
         const vec3 s = ray.origin - tri.vert0;
         const float u = f * dot( s, h );
-        if (u < 0 || u > 1) return false;
+        if (u < 0 || u > 1) return;
         const vec3 q = cross( s, edge1 );
         const float v = f * dot( ray.direction, q );
-        if (v < 0 || u + v > 1) return false;
+        if (v < 0 || u + v > 1) return;
         const float t = f * dot( edge2, q );
-        if (t < 0.0001f) return false;
-        if (ray.t < t) return false;
+        if (t < 0.0001f) return;
+        if (ray.t < t) return;
         ray.t = t;
         // payload data 
         ray.data.col = tri.col;
-        return true;
     }
 
     // boundingBox function is used to set a bounding box for a primitive, in this case, the box encloses the triangle
@@ -88,20 +89,37 @@ int main()
 {
     const int width = 1200;
     const int height = 800;
+    const int N = 1000;
 
-    std::vector<Triangle> tris;
-    tris.push_back(Triangle{vec3{-1, -1, 1}, vec3{1, -1, 1}, vec3{0, 1, 1}, vec3{0,0,255}});
-    tris.push_back(Triangle{vec3{-.5, -.5, 0}, vec3{.5, -.5, 0}, vec3{0, .5, 0}, vec3{255,0,0}});
-    
+    TimeIt timer;
+
+    timer.from();
+    std::vector<Triangle> tris(N);
+    // tris.push_back(Triangle{vec3{-.5, -.5, 0}, vec3{.5, -.5, 0}, vec3{0, .5, 0}, vec3{255,0,0}});
+    // tris.push_back(Triangle{vec3{-1, -1, 1}, vec3{1, -1, 1}, vec3{0, 1, 1}, vec3{0,0,255}});
+    for (int i = 0; i < N; i++)
+    {
+        vec3 r0{random() / RAND_MAX, random() / RAND_MAX, random() / RAND_MAX};
+        vec3 r1{random() / RAND_MAX, random() / RAND_MAX, random() / RAND_MAX};
+        vec3 r2{random() / RAND_MAX, random() / RAND_MAX, random() / RAND_MAX};
+        tris[i].vert0 = r0 * 9.0f - vec3{5};
+        tris[i].vert1 = tris[i].vert0 + r1;
+        tris[i].vert2 = tris[i].vert0 + r2;
+    }
+    std::cerr << "Triangle creation took: " << (timer.now() / 1000) << '\n'; 
+
     bvh::BVH<Triangle> bvh;
 
-    bvh.BVH_builder(tris);
+    timer.from();
+    bvh.BVH_SAH_builder(tris);
+    std::cerr << "BVH build took: " << (timer.now() / 1000) << '\n'; 
 
     uint32_t data[width * height];
 
     vec3 camPos{0, 0, -18};
     vec3 p0{-1, 1, -2}, p1{1, 1, -2}, p2{-1, -1, -2};
 
+    timer.from();
     for (int i=0; i<width; i++) for (int j=0; j<height; j++)
     {
         vec3 pixelPos = p0 + (p1 - p0) * (float(i) / width) + (p2 - p0) * (float(j) / height);
@@ -109,8 +127,8 @@ int main()
         r.origin = camPos;
         r.direction = glm::normalize(pixelPos - camPos);
         r.data = PayLoad{};
-
-        if (bvh.intersect(r))
+        bvh.intersect(r);
+        if (r.t != FLT_MAX)
         {
             vec3 col = r.data.col;
             data[j * width + i] = color(col.r, col.g, col.b, 255);
@@ -120,6 +138,7 @@ int main()
             data[j * width + i] = 0;
         }
     }
+    std::cerr << "Image render took: " << (timer.now() / 1000) << '\n'; 
 
     std::cout << "P3\n" << width << ' ' << height << "\n255\n";
     for (int j = 0; j < height; ++j) {
