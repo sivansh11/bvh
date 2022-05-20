@@ -3,7 +3,6 @@
 #include "timer.h"
 
 #include <iostream>
-#include <random>
 
 // extra data that is attached to a ray
 struct PayLoad
@@ -85,6 +84,11 @@ uint32_t color(uint8_t p_r, uint8_t p_g, uint8_t p_b, uint8_t p_a)
     return res;
 }
 
+float randFloat()
+{
+    return float(rand()) / RAND_MAX;
+}
+
 int main()
 {
     const int width = 1200;
@@ -99,19 +103,20 @@ int main()
     // tris.push_back(Triangle{vec3{-1, -1, 1}, vec3{1, -1, 1}, vec3{0, 1, 1}, vec3{0,0,255}});
     for (int i = 0; i < N; i++)
     {
-        vec3 r0{random() / RAND_MAX, random() / RAND_MAX, random() / RAND_MAX};
-        vec3 r1{random() / RAND_MAX, random() / RAND_MAX, random() / RAND_MAX};
-        vec3 r2{random() / RAND_MAX, random() / RAND_MAX, random() / RAND_MAX};
+        vec3 r0{randFloat(), randFloat(), randFloat()};
+        vec3 r1{randFloat(), randFloat(), randFloat()};
+        vec3 r2{randFloat(), randFloat(), randFloat()};
         tris[i].vert0 = r0 * 9.0f - vec3{5};
         tris[i].vert1 = tris[i].vert0 + r1;
         tris[i].vert2 = tris[i].vert0 + r2;
+        tris[i].center = (tris[i].vert0 + tris[i].vert1 + tris[i].vert2) * 0.3333333f;
     }
     std::cerr << "Triangle creation took: " << (timer.now() / 1000) << '\n'; 
 
     bvh::BVH<Triangle> bvh;
 
     timer.from();
-    bvh.BVH_SAH_builder(tris);
+    bvh.BVH_builder(tris);
     std::cerr << "BVH build took: " << (timer.now() / 1000) << '\n'; 
 
     uint32_t data[width * height];

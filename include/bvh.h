@@ -100,68 +100,63 @@ namespace bvh
         template <typename PayLoad>
         void intersect(Ray<PayLoad> &ray, const uint nodeID)
         {
-            BvhNode *node = &bvhNodes[nodeID], *stack[64];
-            uint stackPtr = 0;
-            while (true)
-            {
-                if (node->isLeaf())
-                {
-                    for (uint i = 0; i < node->primitiveCount; i++)
-                    {
-                        Primitive::intersect(ray, primitives[primitiveIDs[node->leftFirst + i]]);
-                    }
-                    if (stackPtr == 0)
-                        break;
-                    else
-                    {
-                        node = stack[--stackPtr];
-                    }
-                    continue;
-                }
-                BvhNode *child1 = &bvhNodes[node->leftFirst];
-                BvhNode *child2 = &bvhNodes[node->leftFirst + 1];
-                float dist1 = child1->box.intersect(ray);
-                float dist2 = child2->box.intersect(ray);
-                if (dist1 > dist2) 
-                { 
-                    std::swap(dist1, dist2); 
-                    std::swap(child1, child2); 
-                }
-                if (dist1 == FLT_MAX)
-                {
-                    if (stackPtr == 0) 
-                        break;
-                    else 
-                        node = stack[--stackPtr];
-                    
-                }
-                else
-                {
-                    node = child1;
-                    if (dist2 != FLT_MAX) 
-                        stack[stackPtr++] = child2;
-                }
-            }
-            
-            // bool anyIntersection = false;
-            // BvhNode &node = bvhNodes[nodeID];
-            // if (!node.box.intersect(ray)) return anyIntersection;
-            // if (node.isLeaf())
+            // BvhNode *node = &bvhNodes[nodeID], *stack[64];
+            // uint stackPtr = 0;
+            // while (true)
             // {
-            //     for (uint i = 0; i < node.primitiveCount; i++)
+            //     if (node->isLeaf())
             //     {
-            //         if (Primitive::intersect(ray, primitives[primitiveIDs[node.leftFirst + i]]))
-            //             anyIntersection = true;   
+            //         for (uint i = 0; i < node->primitiveCount; i++)
+            //         {
+            //             Primitive::intersect(ray, primitives[primitiveIDs[node->leftFirst + i]]);
+            //         }
+            //         if (stackPtr == 0)
+            //             break;
+            //         else
+            //         {
+            //             node = stack[--stackPtr];
+            //         }
+            //         continue;
+            //     }
+            //     BvhNode *child1 = &bvhNodes[node->leftFirst];
+            //     BvhNode *child2 = &bvhNodes[node->leftFirst + 1];
+            //     float dist1 = child1->box.intersect(ray);
+            //     float dist2 = child2->box.intersect(ray);
+            //     if (dist1 > dist2) 
+            //     { 
+            //         std::swap(dist1, dist2); 
+            //         std::swap(child1, child2); 
+            //     }
+            //     if (dist1 == FLT_MAX)
+            //     {
+            //         if (stackPtr == 0) 
+            //             break;
+            //         else 
+            //             node = stack[--stackPtr];
+                    
+            //     }
+            //     else
+            //     {
+            //         node = child1;
+            //         if (dist2 != FLT_MAX) 
+            //             stack[stackPtr++] = child2;
             //     }
             // }
-            // else
-            // {
-            //     if (intersect(ray, node.leftFirst))
-            //         anyIntersection = true;
-            //     if (intersect(ray, node.leftFirst + 1))
-            //         anyIntersection = true;
-            // }
-            // return anyIntersection;
+            
+            BvhNode &node = bvhNodes[nodeID];
+            if (!node.box.intersect(ray)) ;
+            if (node.isLeaf())
+            {
+                for (uint i = 0; i < node.primitiveCount; i++)
+                {
+                    Primitive::intersect(ray, primitives[primitiveIDs[node.leftFirst + i]]);
+                }
+            }
+            else
+            {
+                intersect(ray, node.leftFirst);
+                intersect(ray, node.leftFirst + 1);
+            }
         }
 
         bool intersect(const BoundingBox &box, const Primitive &primitive, uint nodeID)
