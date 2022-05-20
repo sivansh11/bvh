@@ -9,7 +9,6 @@ struct PayLoad
     vec3 col;
 };
 
-
 struct Triangle
 {
     Triangle() = default;
