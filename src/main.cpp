@@ -63,6 +63,7 @@ struct Triangle
         return tri.center;
     }
 
+    // this intersect function is used to detect primitive-primitive intersect (in this case Triangle-Triangle)
     static bool intersect(const Triangle &tri1, const Triangle &tri2)
     {
         float t[3];
@@ -71,7 +72,6 @@ struct Triangle
         return tri_tri_intersection_test_3d((float*)(&tri1.vert0), (float*)(&tri1.vert1), (float*)(&tri1.vert2), (float*)(&tri2.vert0), (float*)(&tri2.vert1), (float*)(&tri2.vert2), &isCoplaner, s, t);
     }
 };  
-
 
 void colorConversion(uint32_t col, uint8_t *newCol)
 {
