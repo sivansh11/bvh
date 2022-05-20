@@ -93,14 +93,12 @@ int main()
 {
     const int width = 1200;
     const int height = 800;
-    const int N = 1000;
+    const int N = 10000;
 
     TimeIt timer;
 
     timer.from();
     std::vector<Triangle> tris(N);
-    // tris.push_back(Triangle{vec3{-.5, -.5, 0}, vec3{.5, -.5, 0}, vec3{0, .5, 0}, vec3{255,0,0}});
-    // tris.push_back(Triangle{vec3{-1, -1, 1}, vec3{1, -1, 1}, vec3{0, 1, 1}, vec3{0,0,255}});
     for (int i = 0; i < N; i++)
     {
         vec3 r0{randFloat(), randFloat(), randFloat()};
@@ -110,6 +108,7 @@ int main()
         tris[i].vert1 = tris[i].vert0 + r1;
         tris[i].vert2 = tris[i].vert0 + r2;
         tris[i].center = (tris[i].vert0 + tris[i].vert1 + tris[i].vert2) * 0.3333333f;
+        tris[i].col = vec3{randFloat() * 255.99, randFloat() * 255.99, randFloat() * 255.99};
     }
     std::cerr << "Triangle creation took: " << (timer.now() / 1000) << '\n'; 
 
@@ -133,6 +132,10 @@ int main()
         r.direction = glm::normalize(pixelPos - camPos);
         r.data = PayLoad{};
         bvh.intersect(r);
+        // for (int i=0; i<N; i++)
+        // {
+        //     Triangle::intersect(r, tris[i]);
+        // }
         if (r.t != FLT_MAX)
         {
             vec3 col = r.data.col;
