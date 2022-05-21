@@ -62,13 +62,13 @@ namespace bvh
         }
         vec3 min{FLT_MAX}, max{-FLT_MIN};
     };
-
+    
     struct Bin
     {
         BoundingBox box;
         int primitiveCount = 0;
     };
-    
+
     struct BvhNode
     {
         BoundingBox box;
@@ -92,6 +92,11 @@ namespace bvh
         {
             BVH::primitives = primitive;
             buildSAH(num_intervals);
+        }
+        void BVH_BIN_builder(std::vector<Primitive> &primitive, int num_intervals = 16)
+        {
+            BVH::primitives = primitive;
+            buildBIN(num_intervals);
         }
         template <typename PayLoad>
         void intersect(Ray<PayLoad> &ray)
@@ -228,7 +233,38 @@ namespace bvh
             subdivideBVH(rightChildID);
         }
 
-        float findBestSplitPlane(BvhNode &node, int &axis, float &splitPos, const int num_intervals)
+        float findBestSplitPlaneSAH(BvhNode &node, int &axis, float &splitPos, int num_intervals)
+        {
+            float inv = 1.0f / num_intervals;
+            float bestCost = FLT_MAX;
+            for (int a = 0; a < 3; a++)
+            {
+                float boundsMin = FLT_MAX;
+                float boundsMax = -FLT_MAX;
+                for (int i = 0; i < node.primitiveCount; i++)
+                {
+                    Primitive &primitive = primitives[primitiveIDs[node.leftFirst + i]];
+                    boundsMin = glm::min(boundsMin, Primitive::centroid(primitive)[a]);
+                    boundsMax = glm::max(boundsMax, Primitive::centroid(primitive)[a]);
+                }
+                if (boundsMin == boundsMax) continue;
+                float scale = (boundsMax - boundsMin) * inv;
+                for (uint i = 0; i < num_intervals; i++)
+                {
+                    float candidatePos = boundsMin + i * scale;
+                    float cost = evaluateSAH(node, a, candidatePos);
+                    if (cost < bestCost)
+                    {
+                        splitPos = candidatePos;
+                        axis = a;
+                        bestCost = cost;
+                    }
+                }
+            }
+            return bestCost;
+        }
+
+        float findBestSplitPlaneBIN(BvhNode &node, int &axis, float &splitPos, int num_intervals)
         {
             float bestCost = FLT_MAX;
             for (int a = 0; a < 3; a++)
@@ -268,7 +304,7 @@ namespace bvh
                     rightSum += bin[num_intervals - 1 - i].primitiveCount;
                     rightCount[num_intervals - 2 - i] = rightSum;
                     rightBox.grow(bin[num_intervals - 1 - i].box);
-                    rightArea[num_intervals - 2- i] = rightBox.area();
+                    rightArea[num_intervals - 2 - i] = rightBox.area();
                 }
 
                 scale = (boundsMax - boundsMin) / num_intervals;
@@ -284,21 +320,6 @@ namespace bvh
                 }
             }
             return bestCost;
-
-            // float bestCost = FLT_MAX;
-            // for (int a = 0; a < 3; a++) for (uint i = 0; i < node.primitiveCount; i++)
-            // {
-            //     Primitive &primitive = primitives[primitiveIDs[node.leftFirst + i]];
-            //     float candidatePos = Primitive::centroid(primitive)[a];
-            //     float cost = evaluateSAH(node, a, candidatePos);
-            //     if (cost < bestCost)
-            //     {
-            //         splitPos = candidatePos;
-            //         axis = a;
-            //         bestCost = cost;
-            //     }
-            // }
-            // return bestCost;
         }
 
         float evaluateSAH(BvhNode &node, int axis, float pos)
@@ -330,14 +351,14 @@ namespace bvh
             return node.primitiveCount * node.box.area();
         }
 
-        void subdivideSAH(uint nodeID, const int num_intervals)
+        void subdivideSAH(uint nodeID, int num_intervals)
         {
             BvhNode &node = bvhNodes[nodeID];
             if (node.primitiveCount <= 2) return;
 
             int axis;
             float splitPos;
-            float splitCost = findBestSplitPlane(node, axis, splitPos, num_intervals);
+            float splitCost = findBestSplitPlaneSAH(node, axis, splitPos, num_intervals);
 
             float nosplitCost = calculateNodeCost(node);
             if (splitCost >= nosplitCost) return;
@@ -371,6 +392,48 @@ namespace bvh
             subdivideSAH(leftChildID, num_intervals);
             subdivideSAH(rightChildID, num_intervals);
         }
+
+        void subdivideBIN(uint nodeID, int num_intervals)
+        {
+            BvhNode &node = bvhNodes[nodeID];
+            if (node.primitiveCount <= 2) return;
+
+            int axis;
+            float splitPos;
+            float splitCost = findBestSplitPlaneBIN(node, axis, splitPos, num_intervals);
+
+            float nosplitCost = calculateNodeCost(node);
+            if (splitCost >= nosplitCost) return;
+
+            uint i = node.leftFirst;               // first primitive
+            uint j = i + node.primitiveCount - 1;  // last primitive
+
+            while (i <= j)
+            {
+                if (Primitive::centroid(primitives[primitiveIDs[i]])[axis] < splitPos)
+                    i++;
+                else
+                    std::swap(primitiveIDs[i], primitiveIDs[j--]);    
+            }
+            uint leftCount = i - node.leftFirst;
+            if (leftCount == 0 || leftCount == node.primitiveCount) return;
+
+            uint leftChildID = nodesUsed++;
+            uint rightChildID = nodesUsed++;
+
+            bvhNodes[leftChildID].leftFirst = node.leftFirst;
+            bvhNodes[leftChildID].primitiveCount = leftCount;
+            bvhNodes[rightChildID].leftFirst = i;
+            bvhNodes[rightChildID].primitiveCount = node.primitiveCount - leftCount;
+            node.leftFirst = leftChildID;
+            node.primitiveCount = 0;
+            
+            updateNodeBound(leftChildID);
+            updateNodeBound(rightChildID);
+            
+            subdivideBIN(leftChildID, num_intervals);
+            subdivideBIN(rightChildID, num_intervals);
+        }
         
         void buildBVH()
         {
@@ -394,6 +457,17 @@ namespace bvh
             rootNode.primitiveCount = primitives.size();
             updateNodeBound(rootNodeID);
             subdivideSAH(rootNodeID, num_intervals);
+        }
+        void buildBIN(int num_intervals)
+        {
+            primitiveIDs.resize(primitives.size());
+            for (int i = 0; i < primitives.size(); i++) primitiveIDs[i] = i;
+            bvhNodes.resize(primitives.size() * 2);
+            BvhNode &rootNode = bvhNodes[rootNodeID];
+            rootNode.leftFirst = 0;
+            rootNode.primitiveCount = primitives.size();
+            updateNodeBound(rootNodeID);
+            subdivideBIN(rootNodeID, num_intervals);
         }
 
     private:
