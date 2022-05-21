@@ -19,4 +19,4 @@ This library is dependent on glm.
 
 ## To run
 in project root folder
-`build/app > image.ppm`
+`build/app`
