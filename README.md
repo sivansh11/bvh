@@ -1,8 +1,7 @@
 # bvh
 
-This is a generic BVH library (still being optimised)
-
-In this library, you can provide a custom primitive type (could just be a triangle with extra intersection data)
+This is a generic BVH (Bounding Volume Hierarchy) implimentation library (still being optimised),
+which means you can provide a custom primitive type (could just be a triangle with extra intersection data), and the library will make the bvh for you
 
 Look at src/main.cpp for example
 
