@@ -181,43 +181,43 @@ int main()
 {
     const int width = 640;
     const int height = 640;
-    const int N = 1000;
+    const int N = 100;
 
     TimeIt timer;
 
     timer.from();
     std::vector<Triangle> tris;
-    load_obj_file("../assets/shotgun.obj", tris);
+    // load_obj_file("../assets/shotgun.obj", tris);
 
     // for (auto& tri: tris)
     // {
     //     std::cout << tri.vert0 << ' ' << tri.vert1 << ' ' << tri.vert2 << '\n';
     // }
-    // tris.resize(N);
-    // for (int i = 0; i < N; i++)
-    // {
-    //     vec3 r0{randFloat(), randFloat(), randFloat()};
-    //     vec3 r1{randFloat(), randFloat(), randFloat()};
-    //     vec3 r2{randFloat(), randFloat(), randFloat()};
-    //     tris[i].vert0 = r0 * 19.0f - vec3{10};
-    //     tris[i].vert1 = tris[i].vert0 + r1;
-    //     tris[i].vert2 = tris[i].vert0 + r2;
-    //     tris[i].center = (tris[i].vert0 + tris[i].vert1 + tris[i].vert2) * 0.3333333f;
-    //     std::cout << tris[i].vert0 << ' ' << tris[i].vert1 << ' ' << tris[i].vert2 << '\n';
-    // }
+    tris.resize(N);
+    for (int i = 0; i < N; i++)
+    {
+        vec3 r0{randFloat(), randFloat(), randFloat()};
+        vec3 r1{randFloat(), randFloat(), randFloat()};
+        vec3 r2{randFloat(), randFloat(), randFloat()};
+        tris[i].vert0 = r0 * 19.0f - vec3{10};
+        tris[i].vert1 = tris[i].vert0 + r1;
+        tris[i].vert2 = tris[i].vert0 + r2;
+        tris[i].center = (tris[i].vert0 + tris[i].vert1 + tris[i].vert2) * 0.3333333f;
+        // std::cout << tris[i].vert0 << ' ' << tris[i].vert1 << ' ' << tris[i].vert2 << '\n';
+    }
     std::cerr << "Triangle creation took: " << (timer.now() / 1000) << '\n'; 
 
     bvh::BVH<Triangle> bvh;
 
     timer.from();
-    bvh.BVH_builder(tris);
-    // bvh.BVH_SAH_builder(tris);
+    // bvh.BVH_builder(tris);
+    bvh.BVH_SAH_builder(tris, 8);
     std::cerr << "BVH build took: " << (timer.now() / 1000) << '\n'; 
 
     uint32_t data[width * height];
 
     Camera camera;
-    camera.set(vec3{0, 0, -18}, vec3{5, 20, 0}, vec3{0, 1, 0}, float(width) / height, 90.0);
+    camera.set(vec3{0, 0, -18}, vec3{0, 0, 0}, vec3{0, 1, 0}, float(width) / height, 90.0);
 
     timer.from();
     for (int i=0; i<width; i++) for (int j=0; j<height; j++)
