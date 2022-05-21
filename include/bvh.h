@@ -12,8 +12,9 @@ namespace bvh
 {
     template <typename PayLoad>
     struct Ray
-    {
+    {   // ignore this messy code, will be removed later 
         Ray() = default;
+        Ray(vec3 origin, vec3 direction) : origin(origin), direction(direction), invDirection(1.0f / direction.x, 1.0f / direction.y, 1.0f / direction.z) {}
         Ray(vec3 &origin, vec3 &direction) : origin(origin), direction(direction), invDirection(1.0f / direction.x, 1.0f / direction.y, 1.0f / direction.z) {}
         Ray(vec3 &&origin, vec3 &&direction) : origin(origin), direction(direction), invDirection(1.0f / direction.x, 1.0f / direction.y, 1.0f / direction.z) {}
         vec3 origin;
@@ -109,7 +110,7 @@ namespace bvh
                 {
                     for (uint i = 0; i < node->primitiveCount; i++)
                     {
-                        Primitive::intersect(ray, primitives[primitiveIDs[node->leftFirst + i]]);
+                        Primitive::intersect(primitives[primitiveIDs[node->leftFirst + i]], ray);
                     }
                     if (stackPtr == 0)
                         break;
@@ -196,7 +197,10 @@ namespace bvh
                 if (Primitive::centroid(primitives[primitiveIDs[i]])[axis] < splitPos)
                     i++;
                 else
-                    std::swap(primitiveIDs[i], primitiveIDs[j--]);    
+                {
+                    assert(j < primitives.size());
+                    std::swap(primitiveIDs[i], primitiveIDs[j--]); 
+                }   
             }
             uint leftCount = i - node.leftFirst;
             if (leftCount == 0 || leftCount == node.primitiveCount) return;
