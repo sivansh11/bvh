@@ -30,6 +30,9 @@ struct Triangle
     // intersect function intersects a ray to the primitve, this is where you can add extra information to the ray
     static void intersect(const Triangle &tri, bvh::Ray<PayLoad> &ray)
     {
+        #ifndef STATS
+        ray.intersections++;
+        #endif
         const vec3 edge1 = tri.vert1 - tri.vert0;
         const vec3 edge2 = tri.vert2 - tri.vert0;
         const vec3 h = glm::cross( ray.direction, edge2 );
@@ -183,7 +186,7 @@ int main()
 {
     const int width = 640;
     const int height = 640;
-    const int N = 10000;
+    const int N = 20000;
     const int numThreads = 1;
 
     TimeIt timer;
