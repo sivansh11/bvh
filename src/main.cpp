@@ -1,5 +1,6 @@
+#define STATS
 #include "bvh.h"
-// #include "triangle_triangle_intersection.h"
+#include "triangle_triangle_intersection.h"
 #include "timer.h"
 #include "general_utils.h"
 
@@ -7,6 +8,7 @@
 #include "tinyobjloader.h"
 
 #include <iostream>
+#include <thread>
 
 // extra data that is attached to a ray
 struct PayLoad
@@ -66,13 +68,13 @@ struct Triangle
     }
 
     // this intersect function is used to detect primitive-primitive intersect (in this case Triangle-Triangle)
-    // static bool intersect(const Triangle &tri1, const Triangle &tri2)
-    // {
-    //     float t[3];
-    //     float s[3];
-    //     int isCoplaner;
-    //     return tri_tri_intersection_test_3d((float*)(&tri1.vert0), (float*)(&tri1.vert1), (float*)(&tri1.vert2), (float*)(&tri2.vert0), (float*)(&tri2.vert1), (float*)(&tri2.vert2), &isCoplaner, s, t);
-    // }
+    static bool intersect(const Triangle &tri1, const Triangle &tri2)
+    {
+        float t[3];
+        float s[3];
+        int isCoplaner;
+        return tri_tri_intersection_test_3d((float*)(&tri1.vert0), (float*)(&tri1.vert1), (float*)(&tri1.vert2), (float*)(&tri2.vert0), (float*)(&tri2.vert1), (float*)(&tri2.vert2), &isCoplaner, s, t);
+    }
 };  
 
 class Camera
@@ -181,65 +183,90 @@ int main()
 {
     const int width = 640;
     const int height = 640;
-    const int N = 1000;
+    const int N = 10000;
+    const int numThreads = 1;
 
     TimeIt timer;
 
     timer.from();
     std::vector<Triangle> tris;
-    load_obj_file("../assets/shotgun.obj", tris);
+    // #ifndef NDEBUG
+    // load_obj_file("../assets/shotgun.obj", tris);
+    // #else
+    // load_obj_file("assets/shotgun.obj", tris);
+    // #endif
 
     // for (auto& tri: tris)
     // {
     //     std::cout << tri.vert0 << ' ' << tri.vert1 << ' ' << tri.vert2 << '\n';
     // }
-    // tris.resize(N);
-    // for (int i = 0; i < N; i++)
-    // {
-    //     vec3 r0{randFloat(), randFloat(), randFloat()};
-    //     vec3 r1{randFloat(), randFloat(), randFloat()};
-    //     vec3 r2{randFloat(), randFloat(), randFloat()};
-    //     tris[i].vert0 = r0 * 19.0f - vec3{10};
-    //     tris[i].vert1 = tris[i].vert0 + r1;
-    //     tris[i].vert2 = tris[i].vert0 + r2;
-    //     tris[i].center = (tris[i].vert0 + tris[i].vert1 + tris[i].vert2) * 0.3333333f;
-    //     // std::cout << tris[i].vert0 << ' ' << tris[i].vert1 << ' ' << tris[i].vert2 << '\n';
-    // }
+    tris.resize(N);
+    for (int i = 0; i < N; i++)
+    {
+        vec3 r0{randFloat(), randFloat(), randFloat()};
+        vec3 r1{randFloat(), randFloat(), randFloat()};
+        vec3 r2{randFloat(), randFloat(), randFloat()};
+        tris[i].vert0 = r0 * 49.0f - vec3{25};
+        tris[i].vert1 = tris[i].vert0 + r1;
+        tris[i].vert2 = tris[i].vert0 + r2;
+        tris[i].center = (tris[i].vert0 + tris[i].vert1 + tris[i].vert2) * 0.3333333f;
+        // std::cout << tris[i].vert0 << ' ' << tris[i].vert1 << ' ' << tris[i].vert2 << '\n';
+    }
     std::cerr << "Triangle creation took: " << (timer.now() / 1000) << '\n'; 
 
     bvh::BVH<Triangle> bvh;
 
     timer.from();
-    // bvh.BVH_builder(tris);
-    // bvh.BVH_SAH_builder(tris, 8);
-    bvh.BVH_BIN_builder(tris, 8);
+    // bvh.BVH_builder(tris); std::cerr << "---BVH---\n";
+    bvh.BVH_SAH_builder(tris, 8); std::cerr << "---BVH + SAH---\n";
+    // bvh.BVH_BIN_builder(tris, 8); std::cerr << "---BVH + BIN---\n";
     std::cerr << "BVH build took: " << (timer.now() / 1000) << '\n'; 
 
     uint32_t data[width * height];
 
     Camera camera;
-    camera.set(vec3{0, 0, -18}, vec3{5, 20, 0}, vec3{0, 1, 0}, float(width) / height, 90.0);
+    camera.set(vec3{0, 0, -50}, vec3{0, 0, 0}, vec3{0, 1, 0}, float(width) / height, 90.0);
 
     timer.from();
-    for (int i=0; i<width; i++) for (int j=0; j<height; j++)
-    {
-        float U = float(i) / (width - 1);
-        float V = float(j) / (height - 1);
 
-        bvh::Ray<PayLoad> r = camera.getRay(U, V);
-        bvh.intersect(r);
-        uint c = 500 - (int)(r.t * 42);
-        if (r.t != FLT_MAX)
+    std::vector<std::thread> threads;
+
+    float avjIntersections = 0;
+
+    for (int n = 0; n < numThreads; n++)
+    {
+        auto task = [&data, &numThreads, &camera, &bvh, &width, &height, &avjIntersections, n]()
         {
-            data[(j) * width + (i)] = color(c * 0x10101, c * 0x10101, c * 0x10101, 255);
-            // data[(j) * width + (i)] = color(255, 255, 255, 255);
-        }
-        else
-        {
-            data[(j) * width + (i)] = 0;
-        }
+            int columnsPerThread = width / numThreads;
+            for (int i= n * columnsPerThread; i <= (n + 1) * columnsPerThread && i<width; i++) for (int j=0; j<height; j++)
+            {
+                float U = float(i) / (width - 1);
+                float V = float(j) / (height - 1);
+
+                bvh::Ray<PayLoad> r = camera.getRay(U, V);
+                bvh.intersect(r);
+                uint c = 500 - (int)(r.t * 42);
+                if (r.t != FLT_MAX)
+                {
+                    data[(j) * width + (i)] = color(c * 0x10101, c * 0x10101, c * 0x10101, 255);
+                    // data[(j) * width + (i)] = color(255, 255, 255, 255);
+                }
+                else
+                {
+                    data[(j) * width + (i)] = 0;
+                }
+                avjIntersections += r.intersections;
+            }
+        };
+        threads.emplace_back(task);
+    }
+    for (int i=0; i<threads.size(); i++)
+    {
+        threads[i].join();
     }
     std::cerr << "Image render took: " << (timer.now() / 1000) << '\n'; 
+
+    std::cerr << "Average Intersections: " << avjIntersections / (width * height) << '\n';
 
     std::string outImage;
 
@@ -251,8 +278,6 @@ int main()
             outImage += std::to_string(int(col[0])) + ' ' + std::to_string(int(col[1])) + ' ' + std::to_string(int(col[2])) + '\n';
         }
     }
-
     utils::save_string(outImage, "../image.ppm");
-
     return 0;
 }

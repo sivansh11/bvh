@@ -14,14 +14,16 @@ namespace bvh
     struct Ray
     {   // ignore this messy code, will be removed later 
         Ray() = default;
-        Ray(vec3 origin, vec3 direction) : origin(origin), direction(direction), invDirection(1.0f / direction.x, 1.0f / direction.y, 1.0f / direction.z) {}
         Ray(vec3 &origin, vec3 &direction) : origin(origin), direction(direction), invDirection(1.0f / direction.x, 1.0f / direction.y, 1.0f / direction.z) {}
-        Ray(vec3 &&origin, vec3 &&direction) : origin(origin), direction(direction), invDirection(1.0f / direction.x, 1.0f / direction.y, 1.0f / direction.z) {}
+        Ray(vec3 origin, vec3 direction) : origin(origin), direction(direction), invDirection(1.0f / direction.x, 1.0f / direction.y, 1.0f / direction.z) {}
         vec3 origin;
         vec3 direction;
         vec3 invDirection;
         float t = FLT_MAX;
         PayLoad data;
+        #ifdef STATS
+        int intersections = 0;
+        #endif
     };
 
     struct BoundingBox
@@ -42,8 +44,11 @@ namespace bvh
             return extent.x * extent.y + extent.y * extent.z + extent.z * extent.x;
         }
         template <typename PayLoad>
-        float intersect(const Ray<PayLoad> &ray)
+        float intersect(Ray<PayLoad> &ray)
         {
+            #ifdef STATS
+            ray.intersections++;
+            #endif
             float tx1 = (min.x - ray.origin.x) / ray.direction.x, tx2 = (max.x - ray.origin.x) / ray.direction.x;
             float tmin = glm::min(tx1, tx2), tmax = glm::max(tx1, tx2);
             float ty1 = (min.y - ray.origin.y) / ray.direction.y, ty2 = (max.y - ray.origin.y) / ray.direction.y;
@@ -101,6 +106,9 @@ namespace bvh
         template <typename PayLoad>
         void intersect(Ray<PayLoad> &ray)
         {
+            #ifdef STATS
+            ray.intersections++;
+            #endif
             return intersect(ray, rootNodeID);
         }
         bool intersect(Primitive &primitive)
@@ -113,6 +121,9 @@ namespace bvh
         template <typename PayLoad>
         void intersect(Ray<PayLoad> &ray, const uint nodeID)
         {
+            #ifdef STATS
+            ray.intersections++;
+            #endif
             BvhNode *node = &bvhNodes[nodeID], *stack[64];
             uint stackPtr = 0;
             while (true)
