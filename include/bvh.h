@@ -21,9 +21,6 @@ namespace bvh
         vec3 invDirection;
         float t = FLT_MAX;
         PayLoad data;
-        #ifdef STATS
-        int intersections = 0;
-        #endif
     };
 
     struct BoundingBox
@@ -46,9 +43,6 @@ namespace bvh
         template <typename PayLoad>
         float intersect(Ray<PayLoad> &ray)
         {
-            #ifdef STATS
-            ray.intersections++;
-            #endif
             float tx1 = (min.x - ray.origin.x) / ray.direction.x, tx2 = (max.x - ray.origin.x) / ray.direction.x;
             float tmin = glm::min(tx1, tx2), tmax = glm::max(tx1, tx2);
             float ty1 = (min.y - ray.origin.y) / ray.direction.y, ty2 = (max.y - ray.origin.y) / ray.direction.y;
@@ -106,9 +100,6 @@ namespace bvh
         template <typename PayLoad>
         void intersect(Ray<PayLoad> &ray)
         {
-            #ifdef STATS
-            ray.intersections++;
-            #endif
             return intersect(ray, rootNodeID);
         }
         bool intersect(Primitive &primitive)
@@ -121,9 +112,6 @@ namespace bvh
         template <typename PayLoad>
         void intersect(Ray<PayLoad> &ray, const uint nodeID)
         {
-            #ifdef STATS
-            ray.intersections++;
-            #endif
             BvhNode *node = &bvhNodes[nodeID], *stack[64];
             uint stackPtr = 0;
             while (true)

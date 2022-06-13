@@ -1,4 +1,3 @@
-#define STATS
 #include "bvh.h"
 #include "triangle_triangle_intersection.h"
 #include "timer.h"
@@ -30,9 +29,6 @@ struct Triangle
     // intersect function intersects a ray to the primitve, this is where you can add extra information to the ray
     static void intersect(const Triangle &tri, bvh::Ray<PayLoad> &ray)
     {
-        #ifndef STATS
-        ray.intersections++;
-        #endif
         const vec3 edge1 = tri.vert1 - tri.vert0;
         const vec3 edge2 = tri.vert2 - tri.vert0;
         const vec3 h = glm::cross( ray.direction, edge2 );
@@ -141,42 +137,6 @@ float randFloat()
     return float(rand()) / RAND_MAX;
 }
 
-void load_obj_file(const char *path, std::vector<Triangle> &tris)
-{
-    tinyobj::attrib_t attrib;
-    std::vector<tinyobj::shape_t> shapes;
-    std::vector<tinyobj::material_t> materials;
-    std::string warn, err;
-
-    if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, path))
-    {
-        throw std::runtime_error(warn + err);
-    }
-
-    std::vector<vec3> verts;
-    std::vector<uint> indices;
-
-    for (auto& shape: shapes)
-    {
-        for (auto& index: shape.mesh.indices)
-        {
-            vec3 vert{};
-
-            vert = {attrib.vertices[3 * index.vertex_index + 0],
-                    attrib.vertices[3 * index.vertex_index + 1],
-                    attrib.vertices[3 * index.vertex_index + 2]};
-
-            verts.push_back(vert);
-            indices.push_back(indices.size());
-        }
-    }
-
-    for (int i=0; i < indices.size(); i+=3)
-    {
-        tris.emplace_back(verts[i], verts[i + 1], verts[i + 2]);
-    }
-}
-
 std::ostream& operator<<(std::ostream& out, vec3& vec)
 {
     return out << vec.x << ' ' << vec.y << ' ' << vec.z << '\n';
@@ -193,16 +153,6 @@ int main()
 
     timer.from();
     std::vector<Triangle> tris;
-    // #ifndef NDEBUG
-    // load_obj_file("../assets/shotgun.obj", tris);
-    // #else
-    // load_obj_file("assets/shotgun.obj", tris);
-    // #endif
-
-    // for (auto& tri: tris)
-    // {
-    //     std::cout << tri.vert0 << ' ' << tri.vert1 << ' ' << tri.vert2 << '\n';
-    // }
     tris.resize(N);
     for (int i = 0; i < N; i++)
     {
@@ -258,7 +208,6 @@ int main()
                 {
                     data[(j) * width + (i)] = 0;
                 }
-                avjIntersections += r.intersections;
             }
         };
         threads.emplace_back(task);
