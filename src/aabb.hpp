@@ -31,6 +31,10 @@ struct aabb_t {
         return 2 * (e.x * e.y + e.y * e.z + e.z * e.x);
     }
 
+    vec3 center() const {
+        return (max + min) / 2.f;
+    }
+
     vec3 min, max;
 };
 

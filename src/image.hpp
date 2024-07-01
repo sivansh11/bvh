@@ -27,7 +27,7 @@ public:
     void to_disk(const std::string& path) {
         std::stringstream s;
         s << "P3\n" << width << ' ' << height << "\n255\n";
-        for (size_t j = 0; j < height; j++) for (size_t i = 0; i < width; i++) {
+        for (int j = height - 1; j >= 0; j--) for (int i = 0; i < width; i++) {
             vec4 pixel = at(i, j);
             s << uint32_t(clamp(pixel.r, 0, 1) * 255) << ' ' << uint32_t(clamp(pixel.g, 0, 1) * 255) << ' ' << uint32_t(clamp(pixel.b, 0, 1) * 255) << '\n';
         }

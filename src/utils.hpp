@@ -1,9 +1,14 @@
 #ifndef UTILS_HPP
 #define UTILS_HPP
 
+#include "postprocessing.hpp"
+#include "transform.hpp"
+#include "bvh.hpp"
 #include "model.hpp"
 #include "aabb.hpp"
 #include "triangle.hpp"
+#include "blas_instance.hpp"
+#include "ecs.hpp"
 
 namespace core {
 
@@ -32,6 +37,37 @@ auto calculate_aabbs_centers_and_triangles_from_model(const core::model_t& model
         }
     }
     return out;
+}
+
+std::pair<bvh::flat_bvh_t, std::vector<bvh::blas_instance_t<bvh::flat_bvh_t, triangle_t>>> create_tlas_from_scene(scene_t& scene) {
+
+    std::vector<bvh::blas_instance_t<bvh::flat_bvh_t, triangle_t>> blas_instances;
+    std::vector<aabb_t> aabbs;
+    std::vector<vec3> centers;
+
+    scene.for_all<core::bvh::flat_bvh_t, std::vector<core::triangle_t>, core::transform_t>([&](core::entity_id_t id, core::bvh::flat_bvh_t& bvh, std::vector<core::triangle_t>& triangles, core::transform_t& transform) {
+        bvh::blas_instance_t<bvh::flat_bvh_t, triangle_t> blas_instance = bvh::blas_instance_t<bvh::flat_bvh_t, triangle_t>::create(&bvh, triangles.data(), transform.mat4());
+        blas_instances.push_back(blas_instance);
+        aabbs.push_back(blas_instance.aabb);
+        centers.push_back(blas_instance.aabb.center());
+    });
+    
+    bvh::builder_options_t builder_options {
+        ._o_min_primitive_count         = 1,
+        ._o_max_primitive_count         = std::numeric_limits<uint32_t>::max(),
+        ._o_object_split_search_type    = core::bvh::object_split_search_type_t::e_binned_sah,
+        ._o_primitive_intersection_cost = 5.0f,
+        ._o_node_intersection_cost      = 1.0f,
+        ._o_samples                     = 100,
+    };
+
+    bvh::builder_t builder{ builder_options };
+    bvh::bvh_t bvh = builder.build(aabbs.data(), centers.data(), blas_instances.size());
+    // std::cout << "tlas " << builder.show_info(bvh) << '\n';
+    bvh::post_processing_t post_processing{ builder_options };
+    bvh::flat_bvh_t flat_bvh = post_processing.flatten(bvh);
+
+    return { flat_bvh, blas_instances };
 }
 
 } // namespace core

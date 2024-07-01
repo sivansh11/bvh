@@ -4,6 +4,8 @@
 #include "ray.hpp"
 #include "triangle.hpp"
 #include "bvh.hpp"
+#include "postprocessing.hpp"
+#include "blas_instance.hpp"
 #include "aabb.hpp"
 
 // all intersection functions will be here
@@ -100,10 +102,13 @@ aabb_intersection_t aabb_intersect(const aabb_t& aabb, const ray_data_t& ray_dat
 static const uint32_t null_id = std::numeric_limits<uint32_t>::max();
 
 struct hit_t {
-    bool did_intersect() { return primitive_id != null_id; }
+    bool did_intersect_blas() { return primitive_id != null_id; }
+    bool did_intersect() { return primitive_id != null_id && instance_id != null_id; }
+    uint32_t instance_id = null_id;
     uint32_t primitive_id = null_id;
     float t = infinity;  // ray hit t
     float u, v, w;
+    mat4 inverse_transform;
     uint32_t node_intersection_count = 0;
     uint32_t primitive_intersection_count = 0;
 };
@@ -128,9 +133,7 @@ struct static_stack_t {
 };
 
 // TODO: better name for this
-hit_t ray_traverse_bvh_triangle_intersection(const bvh_t& bvh, const ray_t& ray, triangle_t *p_triangles) {
-    ray_data_t ray_data = ray_data_t::create(ray);
-
+hit_t traverse(const bvh_t& bvh, ray_data_t& ray_data, triangle_t *p_triangles) {
     hit_t hit = null_hit;
 
     static_stack_t<std::shared_ptr<node_t>, 32> stack;
@@ -190,9 +193,7 @@ hit_t ray_traverse_bvh_triangle_intersection(const bvh_t& bvh, const ray_t& ray,
     return hit;
 }
 
-hit_t ray_traverse_bvh_triangle_intersection(const flat_bvh_t& bvh, const ray_t& ray, triangle_t *p_triangles) {
-    ray_data_t ray_data = ray_data_t::create(ray);
-
+hit_t traverse(const flat_bvh_t& bvh, ray_data_t& ray_data, triangle_t *p_triangles) {
     hit_t hit = null_hit;
 
     static_stack_t<uint32_t, 32> stack;
@@ -252,6 +253,99 @@ hit_t ray_traverse_bvh_triangle_intersection(const flat_bvh_t& bvh, const ray_t&
 
     return hit;
 }
+
+template <typename bvh_t>
+hit_t blas_instance_intersect(const blas_instance_t<bvh_t, triangle_t>& blas_instance, ray_data_t& ray_data) {
+    hit_t hit;
+    if (aabb_intersect(blas_instance.aabb, ray_data).did_intersect()) {
+        ray_data_t backup_ray_data = ray_data;
+        ray_data.origin = vec3(blas_instance.inverse_transform * vec4(ray_data.origin, 1));
+        ray_data.direction = vec3(blas_instance.inverse_transform * vec4(ray_data.direction, 0));
+        ray_data.inverse_direction = { utils::safe_inverse(ray_data.direction.x), utils::safe_inverse(ray_data.direction.y), utils::safe_inverse(ray_data.direction.z) };
+        hit = traverse(*blas_instance.p_bvh, ray_data, blas_instance.p_primitive);
+        backup_ray_data.tmax = ray_data.tmax;
+        hit.inverse_transform = blas_instance.inverse_transform;
+        ray_data = backup_ray_data;
+    }
+    return hit;
+}
+
+template <typename bvh_t>
+hit_t traverse(const flat_bvh_t& tlas, const ray_t& ray, blas_instance_t<bvh_t, triangle_t> *p_blas_instances) {
+    ray_data_t ray_data = ray_data_t::create(ray);
+
+    hit_t hit = null_hit;
+
+    static_stack_t<uint32_t, 32> stack;
+
+    auto current = 0;
+    
+    hit.node_intersection_count++;
+    if (!aabb_intersect(tlas.flat_nodes[0].aabb, ray_data).did_intersect()) return hit;
+
+    while (true) {
+        const flat_node_t& flat_node = tlas.flat_nodes[current];
+        if (flat_node.is_leaf()) {
+            for (uint32_t i = 0; i < flat_node.primitive_count; i++) {
+                const uint32_t primitive_id = tlas.primitive_indices[flat_node.first_index + i];
+                // triangle_intersection_t intersection = triangle_intersect(p_triangles[primitive_id], ray_data);
+                hit_t intersection = blas_instance_intersect(p_blas_instances[primitive_id], ray_data);
+                if (intersection.did_intersect_blas()) {
+                    // uint32_t instance_id = null_id;
+                    // uint32_t primitive_id = null_id;
+                    // float t = infinity;  // ray hit t
+                    // float u, v, w;
+                    // mat4 inverse_transform;
+                    // uint32_t node_intersection_count = 0;
+                    // uint32_t primitive_intersection_count = 0;
+                    ray_data.tmax = intersection.t;
+
+                    hit.instance_id = primitive_id;
+                    hit.primitive_id = intersection.primitive_id;
+                    hit.inverse_transform = intersection.inverse_transform;
+                    hit.t = intersection.t;
+                    hit.u = intersection.u;
+                    hit.v = intersection.v;
+                    hit.w = intersection.w;
+                    hit.node_intersection_count += intersection.node_intersection_count;
+                    hit.primitive_intersection_count += intersection.primitive_intersection_count;
+                }
+            }
+            if (stack.top == 0) return hit;
+            current = stack.pop();
+        } else {
+            hit.node_intersection_count += 2;
+            aabb_intersection_t left_intersection = aabb_intersect(tlas.flat_nodes[flat_node.first_index + 0].aabb, ray_data);
+            aabb_intersection_t right_intersection = aabb_intersect(tlas.flat_nodes[flat_node.first_index + 1].aabb, ray_data);
+
+            if (left_intersection.did_intersect()) {
+                if (stack.top >= stack.size) return hit;
+                if (right_intersection.did_intersect()) {
+                    if (left_intersection.tmin <= right_intersection.tmin) {
+                        stack.push(flat_node.first_index + 1);
+                        current = flat_node.first_index + 0;
+                    } else {
+                        stack.push(flat_node.first_index + 0);
+                        current = flat_node.first_index + 1;
+                    }
+                } else {
+                    current = flat_node.first_index + 0;
+                }
+            } else {
+                if (right_intersection.did_intersect()) {
+                    current = flat_node.first_index + 1;
+                } else {
+                    if (stack.top == 0) return hit;
+                    current = stack.pop();
+                }
+            }
+
+        }
+    } 
+
+    return hit;
+}
+
 
 } // namespace bvh
 
