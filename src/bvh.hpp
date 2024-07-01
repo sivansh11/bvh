@@ -3,6 +3,7 @@
 
 #include "aabb.hpp"
 #include "random.hpp"
+#include "serilisation.hpp"
 
 #include <memory>
 #include <sstream>
@@ -391,11 +392,10 @@ struct flat_node_t {
 struct flat_bvh_t {
     std::vector<flat_node_t> flat_nodes;
     std::vector<uint32_t> primitive_indices;
-    uint32_t primitive_count;
 };
 
-struct post_process_t {
-    post_process_t(bvh_t& bvh, const builder_t& builder, uint32_t seed = 0) : _bvh(bvh), _builder(builder), _rng(seed) {}
+struct post_processing_t {
+    post_processing_t(bvh_t& bvh, const builder_t& builder) : _bvh(bvh), _builder(builder) {}
 
     float inefficiency_measure_sum(std::shared_ptr<node_t> node) {
         return node->aabb.area() / (0.5 * (node->left->aabb.area() + node->right->aabb.area()));
@@ -413,7 +413,7 @@ struct post_process_t {
         return inefficiency_measure_sum(node) * inefficiency_measure_min(node) * inefficiency_measure_area(node);
     }
 
-    post_process_t& reinsertion_optimization(uint32_t k, uint32_t itrs) {
+    post_processing_t& reinsertion_optimization(uint32_t k, uint32_t itrs) {
         for (uint32_t pass = 0; pass < itrs; pass++) {
             auto candidates = find_candidates(_bvh.root);
             std::sort(candidates.begin(), candidates.end(), [&](std::shared_ptr<node_t> a, std::shared_ptr<node_t> b) {
@@ -444,10 +444,10 @@ struct post_process_t {
         }
     }
 
-    void post_order_traversal_collapse_unnecessary_subtrees(std::shared_ptr<node_t> node) {
+    void post_order_traversal_node_collapse_optimization(std::shared_ptr<node_t> node) {
         if (!node->is_leaf()) {
-            post_order_traversal_collapse_unnecessary_subtrees(node->left);
-            post_order_traversal_collapse_unnecessary_subtrees(node->right);
+            post_order_traversal_node_collapse_optimization(node->left);
+            post_order_traversal_node_collapse_optimization(node->right);
         } 
 
         if (!node->is_leaf() && node->left->is_leaf() && node->right->is_leaf()) {
@@ -470,6 +470,7 @@ struct post_process_t {
             float cost_of_node_if_leaf = _builder._o_triangle_intersection_cost * primitive_indices.size();
 
             if (cost_of_node_if_leaf < real_cost_of_node) {
+                // std::cout << "[INFO] collapsed a subtree!\n";
                 node->primitive_indices = primitive_indices;
                 node->left->parent = nullptr;
                 node->right->parent = nullptr;
@@ -479,8 +480,9 @@ struct post_process_t {
         }
     }
 
-    post_process_t& collapse_unnecessary_subtrees() {
-        post_order_traversal_collapse_unnecessary_subtrees(_bvh.root);
+    post_processing_t& node_collapse_optimization() {
+        // std::cout << "[INFO] starting collapse optimisation!\n";
+        post_order_traversal_node_collapse_optimization(_bvh.root);
         return *this;
     }
 
@@ -495,27 +497,6 @@ struct post_process_t {
             node->aabb.grow(node->left->aabb).grow(node->right->aabb);
             node = node->parent;
         } while (node != nullptr);
-        // do {
-        //     node = node->parent;
-        // } while (node->parent != nullptr);
-
-        // std::vector<std::shared_ptr<node_t>> stack { node };
-        // std::vector<std::shared_ptr<node_t>> update_order;
-        // while (stack.size()) {
-        //     auto current = stack.back(); stack.pop_back();
-        //     update_order.push_back(current);
-        //     if (current->is_leaf()) {
-        //         stack.push_back(current->left);
-        //         stack.push_back(current->right);
-        //     }
-        // }
-
-        // for (int i = update_order.size() - 1; i >= 0; i--) {
-        //     auto current = update_order[i];
-        //     if (current->is_leaf()) continue;
-        //     current->aabb = null_aabb;
-        //     current->aabb.grow(current->left->aabb).grow(current->right->aabb);
-        // }
     }
 
     struct remove_t {
@@ -638,7 +619,6 @@ struct post_process_t {
     }
 
     flat_bvh_t flatten() {
-        // TODO: add flattening, check if node collapse works after flattening ?
         std::vector<flat_node_t> flat_nodes;
         std::deque<std::pair<std::shared_ptr<node_t>, uint32_t>> deque{ { _bvh.root, std::numeric_limits<uint32_t>::max() } };
 
@@ -673,7 +653,6 @@ struct post_process_t {
             }
         }
         flat_bvh_t flat_bvh;
-        flat_bvh.primitive_count = _bvh.primitive_count;
         flat_bvh.primitive_indices = primitive_indices;
         flat_bvh.flat_nodes = flat_nodes;
         return flat_bvh;
@@ -681,8 +660,19 @@ struct post_process_t {
 
     bvh_t& _bvh;
     const builder_t& _builder;
-    rng_t _rng;
 };
+
+void to_disk(const flat_bvh_t& bvh, std::string path) {
+    binary_writer_t binary_writer{ path };
+    binary_writer.write(static_cast<uint32_t>(bvh.flat_nodes.size()));
+    for (uint32_t i = 0; i < bvh.flat_nodes.size(); i++) {
+        binary_writer.write(bvh.flat_nodes[i]);
+    }
+    binary_writer.write(static_cast<uint32_t>(bvh.primitive_indices.size()));
+    for (uint32_t i = 0; i < bvh.primitive_indices.size(); i++) {
+        binary_writer.write(bvh.primitive_indices[i]);
+    }
+}
 
 } // namespace bvh
 

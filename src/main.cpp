@@ -97,8 +97,8 @@ void render(core::bvh::flat_bvh_t& bvh, std::vector<core::triangle_t>& triangles
 }
 
 int main() {
-    auto model = core::load_model_from_obj("../../horizon/assets/models/sponza_bbk/SponzaMerged/SponzaMerged.obj");
-    // auto model = core::load_model_from_obj("../../horizon/assets/models/corenl_box.obj");
+    std::string path = "../assets/model/sponza/sponza.obj";
+    auto model = core::load_model_from_obj(path);
 
     auto [aabbs, centers, triangles] = core::calculate_aabbs_centers_and_triangles_from_model(model);
 
@@ -107,30 +107,25 @@ int main() {
            .set_node_intersection_cost(1.)
            .set_samples(100);
 
-    auto start_bvh_builder = time_now();
     auto bvh = builder.build();
-    auto end_bvh_builder = time_now();
-    std::cout << "bvh build took : " << ms(end_bvh_builder - start_bvh_builder) << "ms\n";
     
     std::cout << builder.show_info(bvh) << '\n';
-    render(bvh, triangles, "actual.ppm");
 
-    auto start_bvh_optimizer = time_now();
-
-    core::bvh::post_process_t post_process{ bvh, builder };
-    post_process.reinsertion_optimization(25, 4)
-                .collapse_unnecessary_subtrees()
-                .reinsertion_optimization(25, 2);
-
-    auto flat_bvh = post_process.flatten();
-
-    auto end_bvh_optimizer = time_now();
-    std::cout << "bvh optimization took : " << ms(end_bvh_optimizer - start_bvh_optimizer) << "ms\n";
-
+    core::bvh::post_processing_t post_processing{ bvh, builder };
+    post_processing.reinsertion_optimization(100, 4);
     std::cout << builder.show_info(bvh) << '\n';
-    std::this_thread::sleep_for(std::chrono::seconds{ 1 });
-    // render(bvh, triangles, "test.ppm");
+    post_processing.node_collapse_optimization();
+    std::cout << builder.show_info(bvh) << '\n';
+    post_processing.reinsertion_optimization(200, 1);
+    std::cout << builder.show_info(bvh) << '\n';
+    post_processing.node_collapse_optimization();
+    std::cout << builder.show_info(bvh) << '\n';
+
+    auto flat_bvh = post_processing.flatten();
+
     render(flat_bvh, triangles, "test.ppm");
+
+    bvh::to_disk(flat_bvh, path + ".bvh");
 
     return 0;
 }
