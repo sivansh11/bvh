@@ -48,7 +48,7 @@ struct post_processing_t {
                 std::cout.flush();
                 std::shared_ptr<node_t> from;
                 from = candidates[i];
-                if (from->parent && from->parent->parent) continue;
+                if (!from->parent || !from->parent->parent) continue;
                 auto remove = remove_node(from);
                 {
                     auto to = search_for_reinsertion_node(bvh.root, remove.children[0]);
@@ -125,7 +125,11 @@ private:
     }
 
     float inefficiency_measure(std::shared_ptr<node_t> node) {
-        return inefficiency_measure_sum(node) * inefficiency_measure_min(node) * inefficiency_measure_area(node);
+        float inefficiency = inefficiency_measure_sum(node) * inefficiency_measure_min(node) * inefficiency_measure_area(node);
+        if (glm::isinf(inefficiency)) {
+            return 0;
+        }
+        return inefficiency;
     }
 
 
