@@ -33,15 +33,22 @@ struct flat_bvh_t {
 struct post_processing_t {
     post_processing_t(const builder_options_t& builder_options) : _builder_options(builder_options) {}
 
-    post_processing_t& reinsertion_optimization(bvh_t& bvh, uint32_t k, uint32_t itrs) {
+    post_processing_t& reinsertion_optimization(bvh_t& bvh, uint32_t itrs) {
         for (uint32_t pass = 0; pass < itrs; pass++) {
+            
             auto candidates = find_candidates(bvh.root);
             std::sort(candidates.begin(), candidates.end(), [&](std::shared_ptr<node_t> a, std::shared_ptr<node_t> b) {
                 return inefficiency_measure(a) > inefficiency_measure(b);
             });
-            for (uint32_t i = 0; i < min(k, static_cast<uint32_t>(candidates.size())); i++) {
+            for (uint32_t i = 0; i < candidates.size() / 100; i++) {
+                std::stringstream s;
+                s << "at pass " << pass << " iteration " << i << " out of " << candidates.size() / 100;
+                std::cout << s.str();
+                std::cout << std::string(s.str().size(), '\b');
+                std::cout.flush();
                 std::shared_ptr<node_t> from;
                 from = candidates[i];
+                if (from->parent && from->parent->parent) continue;
                 auto remove = remove_node(from);
                 {
                     auto to = search_for_reinsertion_node(bvh.root, remove.children[0]);
@@ -106,7 +113,7 @@ struct post_processing_t {
 
 private:
     float inefficiency_measure_sum(std::shared_ptr<node_t> node) {
-        return node->aabb.area() / (0.5 * (node->left->aabb.area() + node->right->aabb.area()));
+        return node->aabb.area() / (0.5f * (node->left->aabb.area() + node->right->aabb.area()));
     }
 
     float inefficiency_measure_min(std::shared_ptr<node_t> node) {
@@ -136,9 +143,8 @@ private:
             post_order_traversal_node_collapse_optimization(node->right, nodes_collapsed);
         } 
 
-        if (!node->is_leaf() && node->left->is_leaf() && node->right->is_leaf()) {
+        if (!node->is_leaf()) {
             std::vector<std::shared_ptr<node_t>> stack{ node };
-
             std::vector<uint32_t> primitive_indices;
             while (stack.size()) {
                 auto current = stack.back(); stack.pop_back();
@@ -207,6 +213,7 @@ private:
 
         // removing refrences so that shared pointer can update internal refrence counts
         parent->parent = nullptr;  // remove refrence of grandparent from parent
+        node->parent = nullptr;
         node->left = nullptr;  // remove refrence of children
         node->right = nullptr;
         left->parent = nullptr;     // children should also not refer to node
@@ -214,6 +221,9 @@ private:
 
         // update tree bounds
         recompute_node_bounds_from(grandparent);
+
+        grandparent->is_leaf();
+        sibling->is_leaf();
         
         if (left->aabb.area() > right->aabb.area()) {
             return {
@@ -241,25 +251,46 @@ private:
         }
     }
 
+    struct priority_element_t {
+        std::shared_ptr<node_t> node;
+        float priority;
+        bool operator < (const priority_element_t& other) const {
+            return priority > other.priority; // > cause inversely proportional
+        }
+    };
+
     std::shared_ptr<node_t> search_for_reinsertion_node(std::shared_ptr<node_t> root, std::shared_ptr<node_t> node) {
         // TODO: use priority queue
 
         std::shared_ptr<node_t> best_candidate = nullptr;
         float best_cost = infinity;
 
-        std::vector<std::shared_ptr<node_t>> stack{ root };
-        while (stack.size()) {
-            auto candidate = stack.back(); stack.pop_back();
+        std::priority_queue<priority_element_t> pq;
+        pq.push({root, 0});
+
+        while (pq.size()) {
+            auto [candidate, priority] = pq.top();
+            pq.pop();
+
             float direct_cost = calculate_direct_cost(node, candidate);
             float induced_cost = calculate_induced_cost(node, candidate);
+
+            if (induced_cost + node->aabb.area() >= best_cost) break;
+
             float cost = direct_cost + induced_cost;
+
             if (cost < best_cost) {
                 best_cost = cost;
                 best_candidate = candidate;
             }
-            if (!candidate->is_leaf()) {
-                stack.push_back(candidate->left);
-                stack.push_back(candidate->right);
+
+            float induced_cost_children = cost - candidate->aabb.area();
+
+            if ((induced_cost_children + node->aabb.area()) < best_cost) {
+                if (!candidate->is_leaf()) {
+                    pq.push({candidate->left, induced_cost_children});
+                    pq.push({candidate->right, induced_cost_children});
+                }
             }
         }
         return best_candidate;
@@ -268,12 +299,14 @@ private:
     void reinsert(std::shared_ptr<node_t> to, std::shared_ptr<node_t> from, std::shared_ptr<node_t> link) {
         auto to_parent = to->parent;
 
-        if (to_parent->left == to) {
-            to_parent->left = link;
-            link->parent = to_parent;
-        } else {
-            to_parent->right = link;
-            link->parent = to_parent;
+        if (to_parent) {
+            if (to_parent->left == to) {
+                to_parent->left = link;
+                link->parent = to_parent;
+            } else {
+                to_parent->right = link;
+                link->parent = to_parent;
+            }
         }
 
         link->left = to;

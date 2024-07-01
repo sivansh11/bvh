@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-#define assert(truthy, msg) \
+#define my_assert(truthy, msg) \
 do { \
     if (!(truthy)) { \
         std::cout << msg; \
@@ -24,22 +24,22 @@ public:
     bit_set_t(storage_t data = 0) : _data(data) {}
 
     void set(uint32_t n) {
-        assert(n < (sizeof(storage_t) * 8), ".");
+        my_assert(n < (sizeof(storage_t) * 8), ".");
         _data = _data | (static_cast<storage_t>(1) << n);
     }
 
     void unset(uint32_t n) {
-        assert(n < (sizeof(storage_t) * 8), ".");
+        my_assert(n < (sizeof(storage_t) * 8), ".");
         _data = _data & ~(static_cast<storage_t>(1) << n);
     }
 
     void toggle(uint32_t n) {
-        assert(n < (sizeof(storage_t) * 8), ".");
+        my_assert(n < (sizeof(storage_t) * 8), ".");
         _data = _data ^ (static_cast<storage_t>(1) << n);
     }
 
     bool test(uint32_t n) const {
-        assert(n < (sizeof(storage_t) * 8), ".");
+        my_assert(n < (sizeof(storage_t) * 8), ".");
         return (_data & (static_cast<storage_t>(1) << n)) != 0;
     }
 
@@ -82,8 +82,8 @@ struct base_component_pool_t {
     }
 
     void *get(entity_id_t index) {
-        assert(index < _max_entities, "index is out of bounds");
-        assert(_p_data, "component pool was not created ?");
+        my_assert(index < _max_entities, "index is out of bounds");
+        my_assert(_p_data, "component pool was not created ?");
         return reinterpret_cast<char *>(_p_data) + index * _component_size;
     }
 
@@ -148,7 +148,7 @@ public:
     }
 
     entity_id_t create() {
-        assert(_available_entities.size() > 0, "entity limit reached!");
+        my_assert(_available_entities.size() > 0, "entity limit reached!");
         entity_id_t id = _available_entities[_available_entities.size() - 1];
         _available_entities.pop_back();
         if (_entities.size() <= id) {
@@ -159,14 +159,14 @@ public:
             };
             _entities.push_back(entity_description);
         } else {
-            assert(!_entities[id].is_valid, "new entity with id " << id << " already in used, yet it is in the available entities stack");
+            my_assert(!_entities[id].is_valid, "new entity with id " << id << " already in used, yet it is in the available entities stack");
         }
         return id;
     }
 
     void destroy(entity_id_t id) {
-        assert(id != null_entity_id, "cant destroy null entity");
-        assert(_entities[id].is_valid, "cant destroy a destroyed entity");
+        my_assert(id != null_entity_id, "cant destroy null entity");
+        my_assert(_entities[id].is_valid, "cant destroy a destroyed entity");
         entity_description_t& entity_description = _entities[id];
         for (component_id_t i = 0; i < entity_description.mask.size(); i++) {
             if (entity_description.mask.test(i)) {
@@ -180,8 +180,8 @@ public:
     
     template <typename T>
     T& get(entity_id_t id) {
-        assert(id != null_entity_id, "cant get from null entity");
-        assert(_entities[id].is_valid, "cant get from deleted entity");
+        my_assert(id != null_entity_id, "cant get from null entity");
+        my_assert(_entities[id].is_valid, "cant get from deleted entity");
 
         component_id_t component_id = get_component_id_for<T>();
         if (_component_pools.size() <= component_id) {
@@ -196,9 +196,9 @@ public:
 
     template <typename T, typename... args_t>
     T& construct(entity_id_t id, args_t&&... args) {
-        assert(id != null_entity_id, "cant get from null entity");
-        assert(_entities[id].is_valid, "cant get from deleted entity");
-        assert(!_entities[id].mask.test(get_component_id_for<T>()), "entity already has component");
+        my_assert(id != null_entity_id, "cant get from null entity");
+        my_assert(_entities[id].is_valid, "cant get from deleted entity");
+        my_assert(!_entities[id].mask.test(get_component_id_for<T>()), "entity already has component");
 
 
         component_id_t component_id = get_component_id_for<T>();
@@ -214,9 +214,9 @@ public:
 
     template <typename T>
     void remove(entity_id_t id) {
-        assert(id != null_entity_id, "cant get from null entity");
-        assert(_entities[id].is_valid, "cant get from deleted entity");
-        assert(_entities[id].mask.test(get_component_id_for<T>()), "entity doesnt have component");
+        my_assert(id != null_entity_id, "cant get from null entity");
+        my_assert(_entities[id].is_valid, "cant get from deleted entity");
+        my_assert(_entities[id].mask.test(get_component_id_for<T>()), "entity doesnt have component");
 
         component_id_t component_id = get_component_id_for<T>();
         if (_component_pools.size() <= component_id) {
@@ -232,8 +232,8 @@ public:
 
     template <typename... T>
     bool has(entity_id_t id) {
-        assert(id != null_entity_id, "cant get from null entity");
-        assert(_entities[id].is_valid, "cant get from deleted entity");
+        my_assert(id != null_entity_id, "cant get from null entity");
+        my_assert(_entities[id].is_valid, "cant get from deleted entity");
 
         component_mask_t mask{};
         component_id_t component_ids[] = { get_component_id_for<T>()... };

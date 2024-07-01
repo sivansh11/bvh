@@ -27,6 +27,7 @@ struct node_t {
     }
 
     bool is_leaf() const {
+        assert(!(primitive_indices.size() == 0 && left == nullptr && right == nullptr));
         return primitive_indices.size() != 0 && (left == nullptr && right == nullptr);  // if node is leaf, primitive count will have a value and left and right will be nullptr
     }
 
@@ -99,8 +100,10 @@ struct builder_t {
         std::vector<uint32_t> primtiive_indices;
         for (uint32_t i = 0; i < _primitive_count; i++) primtiive_indices.push_back(i);
         auto root = node_t::create(primtiive_indices);
+        uint32_t node_count = 0;
         update_node_bounds(root);
-        try_split_node(root);
+        try_split_node(root, node_count);
+        std::cout << '\n';
 
         bvh_t bvh;
         bvh.root              = root;
@@ -115,19 +118,23 @@ struct builder_t {
         }
     }
 
-    void try_split_node(std::shared_ptr<node_t> node) {
+    void try_split_node(std::shared_ptr<node_t> node, uint32_t& node_count) {
+        std::stringstream s;
+        s << "current node is: " << node_count;
+        std::cout << s.str();
+        std::cout << std::string(s.str().size(), '\b');
         if (node->primitive_indices.size() <= _builder_options._o_min_primitive_count) return;
 
         auto [split, split_cost] = find_best_object_split(node);
         
         if (node->primitive_indices.size() > _builder_options._o_max_primitive_count) {
-            if (!split_node(node, split)) {
+            if (!split_node(node, split, node_count)) {
                 // std::cout << "[WARNING] failed to split\n"; // maybe handle this ?
             }
         } else {
             float no_split_cost = cost_of_node(node);
             if (split_cost < no_split_cost) {
-                if (!split_node(node, split)) {
+                if (!split_node(node, split, node_count)) {
                     // std::cout << "[WARNING] failed to split\n";
                 }
             }
@@ -267,7 +274,7 @@ struct builder_t {
         return { best_split, best_cost };
     }
 
-    bool split_node(std::shared_ptr<node_t> node, const split_t& split) {
+    bool split_node(std::shared_ptr<node_t> node, const split_t& split, uint32_t& node_count) {
         if (split.axis == 4) {
             // std::cout << "[WARNING] invalid split\n";
             return false;
@@ -293,6 +300,8 @@ struct builder_t {
         node->left  = node_t::create(left_primitive_indices);
         node->right = node_t::create(right_primitive_indices);
 
+        node_count += 2;
+
         node->left->parent  = node;
         node->right->parent = node;
         node->left->axis = node->right->axis = split.axis;
@@ -300,8 +309,8 @@ struct builder_t {
         update_node_bounds(node->left);
         update_node_bounds(node->right);
 
-        try_split_node(node->left);
-        try_split_node(node->right);
+        try_split_node(node->left, node_count);
+        try_split_node(node->right, node_count);
 
         // maybe add is leaf bool and not clear this ?
         node->primitive_indices.clear(); 

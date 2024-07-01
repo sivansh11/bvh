@@ -9,6 +9,7 @@
 #include "triangle.hpp"
 #include "blas_instance.hpp"
 #include "ecs.hpp"
+#include "serilisation.hpp"
 
 namespace core {
 
@@ -68,6 +69,21 @@ std::pair<bvh::flat_bvh_t, std::vector<bvh::blas_instance_t<bvh::flat_bvh_t, tri
     bvh::flat_bvh_t flat_bvh = post_processing.flatten(bvh);
 
     return { flat_bvh, blas_instances };
+}
+
+void to_disk(const std::vector<triangle_t>& triangles, const std::string& path) {
+    binary_writer_t binary_writer{ path };
+    uint32_t size = triangles.size();
+    binary_writer.write(size);
+    for (uint32_t i = 0; i < triangles.size(); i++) {
+        const triangle_t& tri = triangles[i];
+        binary_writer.write(tri.v0.position);
+        binary_writer.write(tri.v0.normal);
+        binary_writer.write(tri.v1.position);
+        binary_writer.write(tri.v1.normal);
+        binary_writer.write(tri.v2.position);
+        binary_writer.write(tri.v2.normal);
+    }
 }
 
 } // namespace core

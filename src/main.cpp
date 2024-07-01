@@ -110,8 +110,8 @@ auto get_average_render_time(core::scene_t& scene, core::camera_t& camera, core:
         average += render_time;
         std::stringstream s;
         s << itr - i << " iterations left";
-        std::cerr << s.str();
-        std::cerr << std::string(s.str().size(), '\b');
+        // std::cerr << s.str();
+        // std::cerr << std::string(s.str().size(), '\b');
     }
     return average / float(itr);
 }
@@ -125,15 +125,16 @@ int main() {
             std::string path = "../assets/model/sponza/sponza.obj";
             core::model_t model = core::load_model_from_obj(path);
             auto [aabbs, centers, triangles] = core::calculate_aabbs_centers_and_triangles_from_model(model);
+            core::to_disk(triangles, path + ".triangles");
             scene.construct<std::vector<core::triangle_t>>(id) = triangles;
 
             core::bvh::builder_options_t builder_options {
                 ._o_min_primitive_count         = 1,
-                ._o_max_primitive_count         = std::numeric_limits<uint32_t>::max(),
+                ._o_max_primitive_count         = 1000000,
                 ._o_object_split_search_type    = core::bvh::object_split_search_type_t::e_binned_sah,
                 ._o_primitive_intersection_cost = 1.1f,
                 ._o_node_intersection_cost      = 1.0f,
-                ._o_samples                     = 100,
+                ._o_samples                     = 8,
             };
             core::bvh::builder_t builder{ builder_options };
             auto start_building = time_now();
@@ -143,9 +144,10 @@ int main() {
             
             auto start_post_processing = time_now();
             core::bvh::post_processing_t post_processing{ builder_options };
-            post_processing.reinsertion_optimization(bvh, 10, 10);
+            post_processing.reinsertion_optimization(bvh, 10);
             post_processing.node_collapse_optimization(bvh);
             scene.construct<core::bvh::flat_bvh_t>(id) = post_processing.flatten(bvh);
+            // scene.construct<core::bvh::flat_bvh_t>(id) = core::bvh::load(path + ".high_quality.bvh");
             std::cout << "post processing bvh took: " << ms(time_now() - start_building) << "ms\n";  
             std::cout << "blas " << builder.show_info(bvh) << '\n';
             core::transform_t& transform = scene.construct<core::transform_t>(id);
@@ -156,11 +158,11 @@ int main() {
     core::camera_t camera{ 90.f, { 0, 2.5, 0 }, { 1, 2.5, 0 } };
     core::image_t image{ 640, 640 };
 
-    // std::cout << "render time: " << ms(render(scene, camera, image)) << '\n';
+    std::cout << "render time: " << ms(render(scene, camera, image)) << '\n';
 
-    std::cout << "#starting test\n";
-    auto average = get_average_render_time(scene, camera, image, 1000);
-    std::cout << "average render time: " << ms(average) << '\n';
+    // std::cout << "#starting test\n";
+    // auto average = get_average_render_time(scene, camera, image, 100);
+    // std::cout << "average render time: " << ms(average) << '\n';
 
     image.to_disk("test.ppm");
 
