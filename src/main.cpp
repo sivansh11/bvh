@@ -26,7 +26,6 @@ int main() {
             std::string path = "../assets/model/sponza/sponza.obj";
             core::model_t model = core::load_model_from_path(path);
             auto [aabbs, centers, triangles] = core::calculate_aabbs_centers_and_triangles_from_model(model);
-            core::to_disk(triangles, path + ".triangles");
             scene.construct<std::vector<core::triangle_t>>(id) = triangles;
 
             core::bvh::builder_options_t builder_options {
@@ -35,7 +34,7 @@ int main() {
                 ._o_object_split_search_type    = core::bvh::object_split_search_type_t::e_binned_sah,
                 ._o_primitive_intersection_cost = 1.1f,
                 ._o_node_intersection_cost      = 1.0f,
-                ._o_samples                     = 100,
+                ._o_samples                     = 1000,
             };
             core::bvh::builder_t builder{ builder_options };
             auto start_building = time_now();
@@ -45,19 +44,17 @@ int main() {
             
             auto start_post_processing = time_now();
             core::bvh::post_processing_t post_processing{ builder_options };
-            // post_processing.reinsertion_optimization(bvh, 10);
-            // post_processing.node_collapse_optimization(bvh);
-            // scene.construct<core::bvh::flat_bvh_t>(id) = post_processing.flatten(bvh);
-            // core::bvh::to_disk(post_processing.flatten(bvh), path + ".high_quality.bvh");
-            scene.construct<core::bvh::flat_bvh_t>(id) = core::bvh::load(path + ".high_quality.bvh");
+            post_processing.reinsertion_optimization(bvh, 100);
+            post_processing.node_collapse_optimization(bvh);
+            scene.construct<core::bvh::flat_bvh_t>(id) = post_processing.flatten(bvh);
             std::cout << "post processing bvh took: " << ms(time_now() - start_building) << "ms\n";  
             std::cout << "blas " << builder.show_info(bvh) << '\n';
             core::transform_t& transform = scene.construct<core::transform_t>(id);
-            // transform.scale = { 0.01, 0.01, 0.01 };
+            transform.scale = { 0.01, 0.01, 0.01 };
         }
     }
     
-    core::camera_t camera{ 90.f, { 0, 2.5, 5 }, { 1, 2.5, 5 } };
+    core::camera_t camera{ 90.f, { 0, 2.5, 0 }, { 1, 2.5, 0 } };
     core::image_t image{ 640, 640 };
 
     auto per_pixel = [&]<typename blas_instance_t>(uint32_t x, uint32_t y, core::bvh::flat_bvh_t& tlas, blas_instance_t *p_blas_instances) -> core::vec4 {

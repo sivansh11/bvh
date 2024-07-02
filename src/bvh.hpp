@@ -116,6 +116,12 @@ struct builder_t {
     }
 
     void try_split_node(std::shared_ptr<node_t> node, uint32_t& node_count) {
+
+        std::stringstream s;
+        s << "At node " << node_count;
+        std::cout << s.str();
+        std::cout << std::string(s.str().size(), '\b');
+        std::cout.flush();
         
         if (node->primitive_indices.size() <= _builder_options._o_min_primitive_count) return;
 
