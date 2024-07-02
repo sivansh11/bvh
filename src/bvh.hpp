@@ -74,7 +74,6 @@ struct bvh_t {
     }
 
     std::shared_ptr<node_t> root;
-    uint32_t primitive_count;
 };
 
 struct builder_options_t {
@@ -103,11 +102,9 @@ struct builder_t {
         uint32_t node_count = 0;
         update_node_bounds(root);
         try_split_node(root, node_count);
-        std::cout << '\n';
 
         bvh_t bvh;
         bvh.root              = root;
-        bvh.primitive_count   = _primitive_count;        
         return bvh;
     }
 
@@ -119,10 +116,7 @@ struct builder_t {
     }
 
     void try_split_node(std::shared_ptr<node_t> node, uint32_t& node_count) {
-        std::stringstream s;
-        s << "current node is: " << node_count;
-        std::cout << s.str();
-        std::cout << std::string(s.str().size(), '\b');
+        
         if (node->primitive_indices.size() <= _builder_options._o_min_primitive_count) return;
 
         auto [split, split_cost] = find_best_object_split(node);
@@ -356,12 +350,11 @@ struct builder_t {
         s << "bvh info\n";
         s << "\tdepth                                               :    " << bvh.depth() << '\n';    
         s << "\tnode count                                          :    " << node_count << '\n';
-        // s << "\tprimitive count                                     :    " << bvh.primitive_count << '\n';
-        s << "\tcounted primitive count (for testing only)          :    " << primitive_count << '\n';
+        s << "\tcounted primitive count                             :    " << primitive_count << '\n';
         s << "\tleaf node count                                     :    " << leaf_node_count << '\n';    
         s << "\tinternal node count                                 :    " << internal_node_count << '\n';    
         s << "\tglobal sah cost                                     :    " << cost_of_node(bvh.root) << '\n';
-        s << "\taverage primitives per leaf                         :    " << bvh.primitive_count / float(leaf_node_count) << '\n';
+        s << "\taverage primitives per leaf                         :    " << primitive_count / float(leaf_node_count) << '\n';
         s << "\tmin primitives per leaf                             :    " << min_primitives_per_leaf << '\n';
         s << "\tmax primitives per leaf                             :    " << max_primitives_per_leaf << '\n';
 

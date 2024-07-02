@@ -27,7 +27,6 @@ struct flat_bvh_t {
     std::vector<uint32_t> primitive_indices;
 };
 
-
 // TODO: post processing options ?
 
 struct post_processing_t {
@@ -36,20 +35,29 @@ struct post_processing_t {
     post_processing_t& reinsertion_optimization(bvh_t& bvh, uint32_t itrs) {
         for (uint32_t pass = 0; pass < itrs; pass++) {
             
+            // get viable candidates
             auto candidates = find_candidates(bvh.root);
             std::sort(candidates.begin(), candidates.end(), [&](std::shared_ptr<node_t> a, std::shared_ptr<node_t> b) {
                 return inefficiency_measure(a) > inefficiency_measure(b);
             });
+            
             for (uint32_t i = 0; i < candidates.size() / 100; i++) {
+
                 std::stringstream s;
                 s << "at pass " << pass << " iteration " << i << " out of " << candidates.size() / 100;
                 std::cout << s.str();
                 std::cout << std::string(s.str().size(), '\b');
                 std::cout.flush();
+                
                 std::shared_ptr<node_t> from;
                 from = candidates[i];
-                if (!from->parent || !from->parent->parent) continue;
+                if (!from->parent || !from->parent->parent) continue;  // incase the parent or the grandparent is the root node, ignore node
+                // this isnt possible if the node is the first candidate, but as we shuffle, a candidate may end up with a root node parent or grandparent
+
+                // actually remvoe candidiate tree
                 auto remove = remove_node(from);
+
+                // search for reinsertion node and reinsert
                 {
                     auto to = search_for_reinsertion_node(bvh.root, remove.children[0]);
                     reinsert(to, remove.children[0], remove.free[0]);
@@ -60,14 +68,15 @@ struct post_processing_t {
                 }
             }
         }
+        std::cout << '\n';
         return *this;
     }
 
-    post_processing_t& node_collapse_optimization(bvh_t& bvh) {
+    post_processing_t& node_collapse_optimization(bvh_t& bvh, uint32_t *p_nodes_collapsed = nullptr) {
         // std::cout << "[INFO] starting collapse optimisation!\n";
         uint32_t nodes_collapsed = 0;
         post_order_traversal_node_collapse_optimization(bvh.root, nodes_collapsed);
-        std::cout << "[INFO] collapsed " << nodes_collapsed << " nodes!\n";
+        if (p_nodes_collapsed) *p_nodes_collapsed = nodes_collapsed;
         return *this;
     }
 
@@ -110,6 +119,14 @@ struct post_processing_t {
         flat_bvh.flat_nodes = flat_nodes;
         return flat_bvh;
     }
+    
+    bvh_t from_flat_bvh(const flat_bvh_t& flat_bvh) {
+        bvh_t bvh;
+
+        // bvh.
+
+        return bvh;
+    }
 
 private:
     float inefficiency_measure_sum(std::shared_ptr<node_t> node) {
@@ -148,6 +165,8 @@ private:
         } 
 
         if (!node->is_leaf()) {
+
+            // doing this here is unoptimal, if I cared about performance while building, I would store the primitive count in internal node, then an extra bool indicating node is leaf would be required
             std::vector<std::shared_ptr<node_t>> stack{ node };
             std::vector<uint32_t> primitive_indices;
             while (stack.size()) {
@@ -167,7 +186,6 @@ private:
 
             if (cost_of_node_if_leaf < real_cost_of_node) {
                 nodes_collapsed++;
-                // std::cout << "[INFO] collapsed a subtree!\n";
                 node->primitive_indices = primitive_indices;
                 node->left->parent = nullptr;
                 node->right->parent = nullptr;
@@ -264,8 +282,7 @@ private:
     };
 
     std::shared_ptr<node_t> search_for_reinsertion_node(std::shared_ptr<node_t> root, std::shared_ptr<node_t> node) {
-        // TODO: use priority queue
-
+        // algorithm taken from the paper almost exactly
         std::shared_ptr<node_t> best_candidate = nullptr;
         float best_cost = infinity;
 

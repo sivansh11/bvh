@@ -288,18 +288,9 @@ hit_t traverse(const flat_bvh_t& tlas, const ray_t& ray, blas_instance_t<bvh_t, 
         if (flat_node.is_leaf()) {
             for (uint32_t i = 0; i < flat_node.primitive_count; i++) {
                 const uint32_t primitive_id = tlas.primitive_indices[flat_node.first_index + i];
-                // triangle_intersection_t intersection = triangle_intersect(p_triangles[primitive_id], ray_data);
                 hit_t intersection = blas_instance_intersect(p_blas_instances[primitive_id], ray_data);
                 if (intersection.did_intersect_blas()) {
-                    // uint32_t instance_id = null_id;
-                    // uint32_t primitive_id = null_id;
-                    // float t = infinity;  // ray hit t
-                    // float u, v, w;
-                    // mat4 inverse_transform;
-                    // uint32_t node_intersection_count = 0;
-                    // uint32_t primitive_intersection_count = 0;
                     ray_data.tmax = intersection.t;
-
                     hit.instance_id = primitive_id;
                     hit.primitive_id = intersection.primitive_id;
                     hit.inverse_transform = intersection.inverse_transform;
@@ -345,7 +336,6 @@ hit_t traverse(const flat_bvh_t& tlas, const ray_t& ray, blas_instance_t<bvh_t, 
 
     return hit;
 }
-
 
 } // namespace bvh
 

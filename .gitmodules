@@ -4,3 +4,6 @@
 [submodule "assets/model/sponza"]
 	path = assets/model/sponza
 	url = https://github.com/jimmiebergmann/Sponza.git
+[submodule "deps/assimp"]
+	path = deps/assimp
+	url = https://github.com/assimp/assimp.git
