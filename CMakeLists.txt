@@ -10,11 +10,19 @@ set(FETCHCONTENT_QUIET FALSE)
 include(FetchContent)
 
 FetchContent_Declare(
+  geometry
+  GIT_REPOSITORY https://github.com/sivansh11/geometry
+  GIT_TAG main
+)
+FetchContent_Declare(
   glm
   GIT_REPOSITORY https://github.com/g-truc/glm.git
   GIT_TAG release-1-0-2
 )
 
+if (NOT geometry_POPULATED)
+  FetchContent_MakeAvailable(geometry)
+endif()
 if (NOT glm_POPULATED)
   FetchContent_MakeAvailable(glm)
 endif()
@@ -24,6 +32,7 @@ file(GLOB_RECURSE SRC_FILES src/*cpp)
 add_library(bvh ${SRC_FILES})
 
 target_link_libraries(bvh
+  PUBLIC geometry
   PUBLIC glm
 )
 

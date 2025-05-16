@@ -1,5 +1,5 @@
 #include "bvh/bvh.hpp"
-#include "bvh/aabb.hpp"
+#include "geometry/aabb.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cstring>
@@ -12,12 +12,12 @@ namespace bvh {
 
 struct split_t {
   uint32_t axis = std::numeric_limits<uint32_t>::max(); // undefined
-  float position = infinity;
-  float cost = infinity;
+  float position = geometry::infinity;
+  float cost = geometry::infinity;
 };
 
 struct bin_t {
-  aabb_t aabb{};
+  geometry::aabb_t aabb{};
   uint32_t primitive_count = 0;
 };
 
@@ -97,7 +97,8 @@ node_t new_node(uint32_t first_primitive_index, uint32_t primitive_count) {
   return node;
 }
 
-void update_node_bounds(bvh_t &bvh, uint32_t node_index, aabb_t *aabbs) {
+void update_node_bounds(bvh_t &bvh, uint32_t node_index,
+                        geometry::aabb_t *aabbs) {
   node_t &node = bvh.nodes[node_index];
   if (node.is_leaf) {
     node.aabb = {};
@@ -115,7 +116,7 @@ void update_node_bounds(bvh_t &bvh, uint32_t node_index, aabb_t *aabbs) {
   }
 }
 
-void try_split_node(bvh_t &bvh, uint32_t node_index, aabb_t *aabbs,
+void try_split_node(bvh_t &bvh, uint32_t node_index, geometry::aabb_t *aabbs,
                     glm::vec3 *centers, const options_t &options);
 
 uint32_t partition_node_indices(bvh_t &bvh, uint32_t node_index,
@@ -132,7 +133,8 @@ uint32_t partition_node_indices(bvh_t &bvh, uint32_t node_index,
 }
 
 bool split_node(bvh_t &bvh, uint32_t node_index, const split_t &split,
-                aabb_t *aabbs, glm::vec3 *centers, const options_t &options) {
+                geometry::aabb_t *aabbs, glm::vec3 *centers,
+                const options_t &options) {
   if (split.axis == std::numeric_limits<uint32_t>::max())
     return false;
 
@@ -180,14 +182,14 @@ bool split_node(bvh_t &bvh, uint32_t node_index, const split_t &split,
 }
 
 split_t find_best_object_split(const bvh_t &bvh, uint32_t node_index,
-                               aabb_t *aabbs, glm::vec3 *centers,
+                               geometry::aabb_t *aabbs, glm::vec3 *centers,
                                const options_t &options) {
   const node_t &node = bvh.nodes[node_index];
   split_t best_split{};
 
   switch (options.o_object_split_search_type) {
   case object_split_search_type_t::e_binned_sah: {
-    aabb_t split_bounds{};
+    geometry::aabb_t split_bounds{};
     for (uint32_t i = 0; i < node.primitive_count; i++)
       split_bounds.grow(
           centers[bvh.primitive_indices[node.as.leaf.first_primitive_index +
@@ -225,8 +227,8 @@ split_t find_best_object_split(const bvh_t &bvh, uint32_t node_index,
           alloca(sizeof(uint32_t) * options.o_samples - 1));
       uint32_t *right_count = reinterpret_cast<uint32_t *>(
           alloca(sizeof(uint32_t) * options.o_samples - 1));
-      aabb_t left_aabb{};
-      aabb_t right_aabb{};
+      geometry::aabb_t left_aabb{};
+      geometry::aabb_t right_aabb{};
       uint32_t left_sum = 0;
       uint32_t right_sum = 0;
       for (uint32_t i = 0; i < options.o_samples - 1; i++) {
@@ -262,7 +264,7 @@ split_t find_best_object_split(const bvh_t &bvh, uint32_t node_index,
   return best_split;
 }
 
-void try_split_node(bvh_t &bvh, uint32_t node_index, aabb_t *aabbs,
+void try_split_node(bvh_t &bvh, uint32_t node_index, geometry::aabb_t *aabbs,
                     glm::vec3 *centers, const options_t &options) {
   node_t &node = bvh.nodes[node_index];
   if (node.primitive_count <= options.o_min_primitives_per_node)
@@ -283,8 +285,8 @@ void try_split_node(bvh_t &bvh, uint32_t node_index, aabb_t *aabbs,
   }
 }
 
-bvh_t build_bvh2(aabb_t *aabbs, glm::vec3 *centers, uint32_t primitive_count,
-                 const options_t &options) {
+bvh_t build_bvh2(geometry::aabb_t *aabbs, glm::vec3 *centers,
+                 uint32_t primitive_count, const options_t &options) {
   bvh_t bvh{};
   bvh.primitive_indices.reserve(primitive_count);
   for (uint32_t i = 0; i < primitive_count; i++)
