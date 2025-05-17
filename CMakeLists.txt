@@ -10,8 +10,8 @@ set(FETCHCONTENT_QUIET FALSE)
 include(FetchContent)
 
 FetchContent_Declare(
-  geometry
-  GIT_REPOSITORY https://github.com/sivansh11/geometry
+  math
+  GIT_REPOSITORY https://github.com/sivansh11/math
   GIT_TAG main
 )
 FetchContent_Declare(
@@ -20,8 +20,8 @@ FetchContent_Declare(
   GIT_TAG release-1-0-2
 )
 
-if (NOT geometry_POPULATED)
-  FetchContent_MakeAvailable(geometry)
+if (NOT math_POPULATED)
+  FetchContent_MakeAvailable(math)
 endif()
 if (NOT glm_POPULATED)
   FetchContent_MakeAvailable(glm)
@@ -32,7 +32,7 @@ file(GLOB_RECURSE SRC_FILES src/*cpp)
 add_library(bvh ${SRC_FILES})
 
 target_link_libraries(bvh
-  PUBLIC geometry
+  PUBLIC math
   PUBLIC glm
 )
 

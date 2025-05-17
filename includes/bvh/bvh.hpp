@@ -1,7 +1,7 @@
 #ifndef BVH_BVH_HPP
 #define BVH_BVH_HPP
 
-#include "geometry/aabb.hpp"
+#include "math/aabb.hpp"
 
 #include <limits>
 
@@ -9,7 +9,7 @@ namespace bvh {
 
 #define FIRST_INDEX_BITS_SIZE 28
 struct node_t {
-  geometry::aabb_t aabb{};
+  math::aabb_t aabb{};
   uint32_t is_leaf : 1;
   uint32_t primitive_count : 31;
   union as_t {
@@ -47,7 +47,7 @@ struct bvh_t {
   std::vector<uint32_t> primitive_indices;
 };
 
-bvh_t build_bvh2(geometry::aabb_t *aabbs, glm::vec3 *centers,
+bvh_t build_bvh2(math::aabb_t *aabbs, glm::vec3 *centers,
                  uint32_t primitive_count, const options_t &options);
 
 float cost_of_bvh(const bvh_t &bvh, const options_t &options);
