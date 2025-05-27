@@ -49,7 +49,7 @@ aabb_intersection_t aabb_intersect(const math::aabb_t &aabb,
                                    const ray_data_t &ray_data);
 
 hit_t traverse(uint32_t *primitive_indices, node_t *nodes,
-               math::triangle_t *triangles, ray_data_t &ray_data);
+               math::triangle_t *triangles, ray_t &ray);
 
 } // namespace bvh
 
