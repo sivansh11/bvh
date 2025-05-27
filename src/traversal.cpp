@@ -92,7 +92,7 @@ hit_t traverse(uint32_t *primitive_indices, node_t *nodes,
   stack[0] = 0;
   uint32_t stack_top = 1;
 
-  while (true) {
+  while (true && stack_top) {
     node_t node = nodes[stack[--stack_top]];
     if (!aabb_intersect(node.aabb, ray_data).did_intersect())
       continue;
