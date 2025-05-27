@@ -1,4 +1,5 @@
 #include "bvh/traversal.hpp"
+#include "bvh/bvh.hpp"
 #include "math/math.hpp"
 #include "math/triangle.hpp"
 
@@ -87,103 +88,139 @@ hit_t traverse(uint32_t *primitive_indices, node_t *nodes,
 
   hit_t hit = null_hit;
 
-  bvh::node_t root = nodes[0];
-
-  hit.node_intersection_count++;
-
-  if (!aabb_intersect(root.aabb, ray_data).did_intersect())
-    return hit;
-
-  if (root.is_leaf) {
-    for (uint32_t i = 0; i < root.primitive_count; i++) {
-      uint32_t primitive_index =
-          primitive_indices[root.as.leaf.first_primitive_index + i];
-      math::triangle_t triangle = triangles[primitive_index];
-      hit.primitive_intersection_count++;
-      triangle_intersection_t intersection =
-          triangle_intersect(triangle, ray_data);
-      if (intersection.did_intersect()) {
-        ray_data.tmax = intersection.t;
-        hit.primitive_index = primitive_index;
-        hit.t = intersection.t;
-        hit.u = intersection.u;
-        hit.v = intersection.v;
-        hit.w = intersection.w;
-      }
-    }
-    return hit;
-  }
-
-  uint32_t current = 1;
-
-  uint32_t stack_top = 0;
-  static const uint32_t STACK_SIZE = 16;
-  uint32_t stack[STACK_SIZE];
+  uint32_t stack[32];
+  stack[0] = 0;
+  uint32_t stack_top = 1;
 
   while (true) {
-    const bvh::node_t left = nodes[current];
-    const bvh::node_t right = nodes[current + 1];
-
-    hit.node_intersection_count += 2;
-    aabb_intersection_t left_intersect = aabb_intersect(left.aabb, ray_data);
-    aabb_intersection_t right_intersect = aabb_intersect(right.aabb, ray_data);
-
-    uint32_t start = 0;
-    uint32_t end = 0;
-    if (left_intersect.did_intersect() && bool(left.is_leaf)) {
-      if (right_intersect.did_intersect() && bool(right.is_leaf)) {
-        start = left.as.leaf.first_primitive_index;
-        end = right.as.leaf.first_primitive_index + right.primitive_count;
-      } else {
-        start = left.as.leaf.first_primitive_index;
-        end = left.as.leaf.first_primitive_index + left.primitive_count;
-      }
-    } else if (right_intersect.did_intersect() && bool(right.is_leaf)) {
-      start = right.as.leaf.first_primitive_index;
-      end = right.as.leaf.first_primitive_index + right.primitive_count;
-    }
-    for (uint32_t i = start; i < end; i++) {
-      const uint32_t primitive_index = primitive_indices[i];
-      math::triangle_t triangle = triangles[primitive_index];
-      hit.primitive_intersection_count++;
-      triangle_intersection_t intersection =
-          triangle_intersect(triangle, ray_data);
-      if (intersection.did_intersect()) {
-        ray_data.tmax = intersection.t;
-        hit.primitive_index = primitive_index;
-        hit.t = intersection.t;
-        hit.u = intersection.u;
-        hit.v = intersection.v;
-        hit.w = intersection.w;
-      }
-    }
-
-    if (left_intersect.did_intersect() && !bool(left.is_leaf)) {
-      if (right_intersect.did_intersect() && !bool(right.is_leaf)) {
-        if (stack_top >= STACK_SIZE)
-          return hit; // TODO: maybe raise an error ?
-        if (left_intersect.tmin <= right_intersect.tmin) {
-          current = left.as.internal.first_child_index;
-          stack[stack_top++] = right.as.internal.first_child_index;
-        } else {
-          current = right.as.internal.first_child_index;
-          stack[stack_top++] = left.as.internal.first_child_index;
+    node_t node = nodes[stack[--stack_top]];
+    if (!aabb_intersect(node.aabb, ray_data).did_intersect())
+      continue;
+    if (node.is_leaf) {
+      for (uint32_t i = 0; i < node.primitive_count; i++) {
+        uint32_t primitive_index =
+            primitive_indices[node.as.leaf.first_primitive_index + i];
+        math::triangle_t triangle = triangles[primitive_index];
+        hit.primitive_intersection_count++;
+        triangle_intersection_t intersection =
+            triangle_intersect(triangle, ray_data);
+        if (intersection.did_intersect()) {
+          ray_data.tmax = intersection.t;
+          hit.primitive_index = primitive_index;
+          hit.t = intersection.t;
+          hit.u = intersection.u;
+          hit.v = intersection.v;
+          hit.w = intersection.w;
         }
-      } else {
-        current = left.as.internal.first_child_index;
       }
     } else {
-      if (right_intersect.did_intersect() && !bool(right.is_leaf)) {
-        current = right.as.internal.first_child_index;
-      } else {
-        if (stack_top == 0)
-          return hit;
-        current = stack[--stack_top];
-      }
+      stack[stack_top++] = node.as.internal.first_child_index;
+      stack[stack_top++] = node.as.internal.first_child_index + 1;
     }
   }
-
   return hit;
+
+  if (false) {
+
+    bvh::node_t root = nodes[0];
+
+    hit.node_intersection_count++;
+
+    if (!aabb_intersect(root.aabb, ray_data).did_intersect())
+      return hit;
+
+    if (root.is_leaf) {
+      for (uint32_t i = 0; i < root.primitive_count; i++) {
+        uint32_t primitive_index =
+            primitive_indices[root.as.leaf.first_primitive_index + i];
+        math::triangle_t triangle = triangles[primitive_index];
+        hit.primitive_intersection_count++;
+        triangle_intersection_t intersection =
+            triangle_intersect(triangle, ray_data);
+        if (intersection.did_intersect()) {
+          ray_data.tmax = intersection.t;
+          hit.primitive_index = primitive_index;
+          hit.t = intersection.t;
+          hit.u = intersection.u;
+          hit.v = intersection.v;
+          hit.w = intersection.w;
+        }
+      }
+      return hit;
+    }
+
+    uint32_t current = 1;
+
+    uint32_t stack_top = 0;
+    static const uint32_t STACK_SIZE = 16;
+    uint32_t stack[STACK_SIZE];
+
+    while (true) {
+      const bvh::node_t left = nodes[current];
+      const bvh::node_t right = nodes[current + 1];
+
+      hit.node_intersection_count += 2;
+      aabb_intersection_t left_intersect = aabb_intersect(left.aabb, ray_data);
+      aabb_intersection_t right_intersect =
+          aabb_intersect(right.aabb, ray_data);
+
+      uint32_t start = 0;
+      uint32_t end = 0;
+      if (left_intersect.did_intersect() && bool(left.is_leaf)) {
+        if (right_intersect.did_intersect() && bool(right.is_leaf)) {
+          start = left.as.leaf.first_primitive_index;
+          end = right.as.leaf.first_primitive_index + right.primitive_count;
+        } else {
+          start = left.as.leaf.first_primitive_index;
+          end = left.as.leaf.first_primitive_index + left.primitive_count;
+        }
+      } else if (right_intersect.did_intersect() && bool(right.is_leaf)) {
+        start = right.as.leaf.first_primitive_index;
+        end = right.as.leaf.first_primitive_index + right.primitive_count;
+      }
+      for (uint32_t i = start; i < end; i++) {
+        const uint32_t primitive_index = primitive_indices[i];
+        math::triangle_t triangle = triangles[primitive_index];
+        hit.primitive_intersection_count++;
+        triangle_intersection_t intersection =
+            triangle_intersect(triangle, ray_data);
+        if (intersection.did_intersect()) {
+          ray_data.tmax = intersection.t;
+          hit.primitive_index = primitive_index;
+          hit.t = intersection.t;
+          hit.u = intersection.u;
+          hit.v = intersection.v;
+          hit.w = intersection.w;
+        }
+      }
+
+      if (left_intersect.did_intersect() && !bool(left.is_leaf)) {
+        if (right_intersect.did_intersect() && !bool(right.is_leaf)) {
+          if (stack_top >= STACK_SIZE)
+            return hit; // TODO: maybe raise an error ?
+          if (left_intersect.tmin <= right_intersect.tmin) {
+            current = left.as.internal.first_child_index;
+            stack[stack_top++] = right.as.internal.first_child_index;
+          } else {
+            current = right.as.internal.first_child_index;
+            stack[stack_top++] = left.as.internal.first_child_index;
+          }
+        } else {
+          current = left.as.internal.first_child_index;
+        }
+      } else {
+        if (right_intersect.did_intersect() && !bool(right.is_leaf)) {
+          current = right.as.internal.first_child_index;
+        } else {
+          if (stack_top == 0)
+            return hit;
+          current = stack[--stack_top];
+        }
+      }
+    }
+
+    return hit;
+  }
 }
 
 } // namespace bvh
