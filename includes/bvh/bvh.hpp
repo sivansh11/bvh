@@ -7,11 +7,9 @@
 
 #include <cstdint>
 
-namespace core {
-
 namespace bvh {
 
-static constexpr uint32_t invalid_index = std::numeric_limits<uint32_t>::max();
+static constexpr uint32_t null_index = std::numeric_limits<uint32_t>::max();
 
 #define FIRST_INDEX_BITS_SIZE 28
 
@@ -67,7 +65,5 @@ bvh_t build_bvh2(math::aabb_t *aabbs, math::vec3 *centers,
 void collapse_nodes(bvh_t &bvh, const options_t &options);
 
 } // namespace bvh
-
-} // namespace core
 
 #endif

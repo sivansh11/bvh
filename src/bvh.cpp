@@ -13,8 +13,6 @@
 #include <stdexcept>
 #include <vulkan/vulkan_core.h>
 
-namespace core {
-
 namespace bvh {
 
 node_t new_node(uint32_t first_primitive_index, uint32_t primitive_count) {
@@ -334,5 +332,3 @@ void collapse_nodes(bvh_t &bvh, const options_t &options) {
 }
 
 } // namespace bvh
-
-} // namespace core
