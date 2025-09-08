@@ -28,7 +28,7 @@ bvh_t build_bvh(const model::raw_mesh_t &mesh) {
     bvh.triangles.push_back(triangle);
   }
 
-  tinybvh::BVH_GPU tiny_bvh{};
+  tinybvh::BVH tiny_bvh{};
   tiny_bvh.BuildHQ(reinterpret_cast<tinybvh::bvhvec4 *>(bvh.triangles.data()),
                    static_cast<uint32_t>(bvh.triangles.size()));
 
@@ -39,7 +39,7 @@ bvh_t build_bvh(const model::raw_mesh_t &mesh) {
               tiny_bvh.usedNodes * sizeof(node_t));
 
   bvh.indices.resize(bvh.triangles.size());
-  std::memcpy(bvh.indices.data(), tiny_bvh.bvh.primIdx,
+  std::memcpy(bvh.indices.data(), tiny_bvh.primIdx,
               bvh.triangles.size() * sizeof(uint32_t));
 
   return bvh;

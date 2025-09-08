@@ -37,7 +37,7 @@ struct triangle_t {
 };
 
 struct bvh_t {
-  std::vector<gpu_node_t> nodes;
+  std::vector<node_t> nodes;
   std::vector<triangle_t> triangles;
   std::vector<uint32_t> indices;
 };
