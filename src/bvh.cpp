@@ -29,7 +29,7 @@ bvh_t build_bvh(const model::raw_mesh_t &mesh) {
   }
 
   tinybvh::BVH tiny_bvh{};
-  tiny_bvh.BuildHQ(reinterpret_cast<tinybvh::bvhvec4 *>(bvh.triangles.data()),
+  tiny_bvh.Build(reinterpret_cast<tinybvh::bvhvec4 *>(bvh.triangles.data()),
                    static_cast<uint32_t>(bvh.triangles.size()));
 
   bvh.nodes.resize(tiny_bvh.usedNodes);
