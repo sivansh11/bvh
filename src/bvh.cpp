@@ -20,7 +20,7 @@ namespace bvh {
 bvh_t build_bvh(const model::raw_mesh_t &mesh) {
   bvh_t bvh{};
   for (uint32_t i = 0; i < mesh.indices.size(); i += 3) {
-    triangle_t triangle{
+    bvh_triangle_t triangle{
         {mesh.vertices[mesh.indices[i + 0]].position, 0},
         {mesh.vertices[mesh.indices[i + 1]].position, 0},
         {mesh.vertices[mesh.indices[i + 2]].position, 0},
@@ -48,7 +48,7 @@ bvh_t build_bvh(const model::raw_mesh_t &mesh) {
 gpu_bvh_t build_gpu_bvh(const model::raw_mesh_t &mesh) {
   gpu_bvh_t gpu_bvh{};
   for (uint32_t i = 0; i < mesh.indices.size(); i += 3) {
-    triangle_t triangle{
+    bvh_triangle_t triangle{
         {mesh.vertices[mesh.indices[i + 0]].position, 0},
         {mesh.vertices[mesh.indices[i + 1]].position, 0},
         {mesh.vertices[mesh.indices[i + 2]].position, 0},
