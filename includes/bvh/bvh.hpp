@@ -39,13 +39,13 @@ struct triangle_t {
 struct bvh_t {
   std::vector<node_t> nodes;
   std::vector<triangle_t> triangles;
-  std::vector<uint32_t> indices;
+  std::vector<uint32_t> prim_indices;
 };
 
 struct gpu_bvh_t {
   std::vector<gpu_node_t> nodes;
   std::vector<triangle_t> triangles;
-  std::vector<uint32_t> indices;
+  std::vector<uint32_t> prim_indices;
 };
 
 bvh_t build_bvh(const model::raw_mesh_t &mesh);

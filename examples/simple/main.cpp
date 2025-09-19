@@ -219,7 +219,7 @@ int main(int argc, char **argv) {
           safe_inverse(D.z),
       };
       auto hit = traverse(O, D, rD, 1e30, (math::vec4 *)bvh.triangles.data(),
-                          bvh.indices.data(), bvh.nodes.data());
+                          bvh.prim_indices.data(), bvh.nodes.data());
       if (hit.x != 1e30f) {
         image.at(x, image._height - y - 1) =
             math::vec4{random_color_from_hit(math::floatBitsToUint(hit.w)), 1};

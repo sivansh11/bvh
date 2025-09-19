@@ -38,8 +38,8 @@ bvh_t build_bvh(const model::raw_mesh_t &mesh) {
   std::memcpy(bvh.nodes.data(), tiny_bvh.bvhNode,
               tiny_bvh.usedNodes * sizeof(node_t));
 
-  bvh.indices.resize(bvh.triangles.size());
-  std::memcpy(bvh.indices.data(), tiny_bvh.primIdx,
+  bvh.prim_indices.resize(bvh.triangles.size());
+  std::memcpy(bvh.prim_indices.data(), tiny_bvh.primIdx,
               bvh.triangles.size() * sizeof(uint32_t));
 
   return bvh;
@@ -66,8 +66,8 @@ gpu_bvh_t build_gpu_bvh(const model::raw_mesh_t &mesh) {
   std::memcpy(gpu_bvh.nodes.data(), bvh.bvhNode,
               bvh.usedNodes * sizeof(gpu_node_t));
 
-  gpu_bvh.indices.resize(gpu_bvh.triangles.size());
-  std::memcpy(gpu_bvh.indices.data(), bvh.bvh.primIdx,
+  gpu_bvh.prim_indices.resize(gpu_bvh.triangles.size());
+  std::memcpy(gpu_bvh.prim_indices.data(), bvh.bvh.primIdx,
               gpu_bvh.triangles.size() * sizeof(uint32_t));
 
   return gpu_bvh;
