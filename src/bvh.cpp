@@ -1,76 +1,69 @@
 #include "bvh/bvh.hpp"
-#include <iostream>
 
-#define TINYBVH_USE_CUSTOM_VECTOR_TYPES
-namespace tinybvh {
-using bvhint2 = math::ivec2;
-using bvhint3 = math::ivec3;
-using bvhuint2 = math::uvec2;
-using bvhvec2 = math::vec2;
-using bvhvec3 = math::vec3;
-using bvhvec4 = math::vec4;
-using bvhdbl3 = math::dvec3;
-using bvhmat4 = math::mat4;
-} // namespace tinybvh
-#define TINYBVH_IMPLEMENTATION
-#include "tiny_bvh.h"
+#include <vector>
+
+#include "math/aabb.hpp"
+#include "math/math.hpp"
 
 namespace bvh {
 
-bvh_t build_bvh(const model::raw_mesh_t &mesh) {
+uint64_t split(uint64_t x, int log_bits) {
+  const int bit_count = 1 << log_bits;
+  uint64_t  mask      = ((uint64_t)-1) >> (bit_count / 2);
+  x &= mask;
+  for (int i = log_bits - 1, n = 1 << i; i > 0; --i, n >>= 1) {
+    mask = (mask | (mask << n)) & ~(mask << (n / 2));
+    x    = (x | (x << n)) & mask;
+  }
+  return x;
+}
+
+uint64_t encode(uint64_t x, uint64_t y, uint64_t z, int log_bits) {
+  return split(x, log_bits) | (split(y, log_bits) << 1) |
+         (split(z, log_bits) << 2);
+}
+
+uint32_t find_best_node(const bvh_t& bvh, uint32_t node_index,
+                        uint32_t search_radius) {
+  const node_t&  node       = bvh.nodes[node_index];
+  uint32_t       best_index = node_index;
+  float          best_area  = math::infinity;
+  const uint32_t node_count = bvh.nodes.size();
+  uint32_t start = node_index > search_radius ? node_index - search_radius : 0;
+  uint32_t stop  = node_index + search_radius < node_count
+                       ? node_index + search_radius
+                       : node_count - 1;
+  for (uint32_t index = start; index < stop; index++) {
+    float area = node.aabb().grow(bvh.nodes[index].aabb()).area();
+    if (area < best_area) {
+      best_area  = area;
+      best_index = index;
+    }
+  }
+  return best_index;
+}
+
+bvh_t build_bvh(const model::raw_mesh_t& mesh) {
   bvh_t bvh{};
+
   for (uint32_t i = 0; i < mesh.indices.size(); i += 3) {
-    triangle_t triangle{
+    bvh_triangle_t bvh_triangle{
         {mesh.vertices[mesh.indices[i + 0]].position, 0},
         {mesh.vertices[mesh.indices[i + 1]].position, 0},
         {mesh.vertices[mesh.indices[i + 2]].position, 0},
     };
-    bvh.triangles.push_back(triangle);
+    bvh.triangles.push_back(bvh_triangle);
   }
 
-  tinybvh::BVH tiny_bvh{};
-  tiny_bvh.Build(reinterpret_cast<tinybvh::bvhvec4 *>(bvh.triangles.data()),
-                   static_cast<uint32_t>(bvh.triangles.size()));
+  bvh.nodes = std::vector<node_t>(2 * bvh.triangles.size() - 1);
 
-  bvh.nodes.resize(tiny_bvh.usedNodes);
-  static_assert(sizeof(tinybvh::BVH::BVHNode) == sizeof(node_t),
-                "sizes should be same");
-  std::memcpy(bvh.nodes.data(), tiny_bvh.bvhNode,
-              tiny_bvh.usedNodes * sizeof(node_t));
+  uint32_t start = bvh.nodes.size() - bvh.triangles.size();
+  uint32_t end   = bvh.nodes.size();
 
-  bvh.indices.resize(bvh.triangles.size());
-  std::memcpy(bvh.indices.data(), tiny_bvh.primIdx,
-              bvh.triangles.size() * sizeof(uint32_t));
+  while (true) {
+  }
 
   return bvh;
 }
 
-gpu_bvh_t build_gpu_bvh(const model::raw_mesh_t &mesh) {
-  gpu_bvh_t gpu_bvh{};
-  for (uint32_t i = 0; i < mesh.indices.size(); i += 3) {
-    triangle_t triangle{
-        {mesh.vertices[mesh.indices[i + 0]].position, 0},
-        {mesh.vertices[mesh.indices[i + 1]].position, 0},
-        {mesh.vertices[mesh.indices[i + 2]].position, 0},
-    };
-    gpu_bvh.triangles.push_back(triangle);
-  }
-
-  tinybvh::BVH_GPU bvh{};
-  bvh.BuildHQ(reinterpret_cast<tinybvh::bvhvec4 *>(gpu_bvh.triangles.data()),
-              static_cast<uint32_t>(gpu_bvh.triangles.size()));
-
-  gpu_bvh.nodes.resize(bvh.usedNodes);
-  static_assert(sizeof(tinybvh::BVH_GPU::BVHNode) == sizeof(gpu_node_t),
-                "sizes should be same");
-  std::memcpy(gpu_bvh.nodes.data(), bvh.bvhNode,
-              bvh.usedNodes * sizeof(gpu_node_t));
-
-  gpu_bvh.indices.resize(gpu_bvh.triangles.size());
-  std::memcpy(gpu_bvh.indices.data(), bvh.bvh.primIdx,
-              gpu_bvh.triangles.size() * sizeof(uint32_t));
-
-  return gpu_bvh;
-}
-
-} // namespace bvh
+}  // namespace bvh
