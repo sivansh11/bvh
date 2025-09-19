@@ -11,24 +11,33 @@
 namespace bvh {
 
 struct node_t {
-  math::vec3 min;
-  uint32_t   index;  // left first or index of child
-  math::vec3 max;
-  uint32_t   prim_count;
-
+  math::vec3   min;
+  uint32_t     index;  // left first or index of primitive
+  math::vec3   max;
+  uint32_t     prim_count;
+  bool         is_leaf() const { return prim_count != 0; }
   math::aabb_t aabb() const { return math::aabb_t{min, max}; }
 };
 static_assert(sizeof(node_t) == 32, "sizeof(node_t) should be 32 bytes");
 
 struct bvh_triangle_t {
-  math::vec4 v0;
-  math::vec4 v1;
-  math::vec4 v2;
+  math::vec4   v0;
+  math::vec4   v1;
+  math::vec4   v2;
+  math::aabb_t aabb() const {
+    return math::aabb_t{}.grow(v0).grow(v1).grow(v2);
+  }
+  math::vec3 center() const {
+    math::vec3 _v0 = v0;
+    math::vec3 _v1 = v1;
+    math::vec3 _v2 = v2;
+    return (_v0 + _v1 + _v2) / 3.f;
+  }
 };
 
 struct bvh_t {
   std::vector<node_t>         nodes;
-  std::vector<uint32_t>       indices;
+  std::vector<uint32_t>       prim_indices;
   std::vector<bvh_triangle_t> triangles;
 };
 
