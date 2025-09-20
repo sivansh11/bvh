@@ -142,14 +142,10 @@ bvh_t build_bvh(const model::raw_mesh_t& mesh) {
 
 uint32_t depth_of_node(const bvh_t &bvh, uint32_t node_id) {
   const node_t &node = bvh.nodes[node_id];
-  if (node.is_leaf()) {
-    return 1;
-  } else {
-    uint32_t children_max_depth = std::max(depth_of_node(bvh, node.index + 0),
-                                           depth_of_node(bvh, node.index + 1));
-    return children_max_depth + 1;
-  }
-  throw std::runtime_error("shouldnt reach here");
+  if (node.is_leaf()) return 0;
+  return std::max(depth_of_node(bvh, node.index + 0),
+                  depth_of_node(bvh, node.index + 1)) +
+         1;
 }
 
 uint32_t depth_of_bvh(const bvh_t &bvh) { return depth_of_node(bvh, 0); }
