@@ -27,9 +27,9 @@ uint64_t encode(uint64_t x, uint64_t y, uint64_t z, int log_bits) {
          (split(z, log_bits) << 2);
 }
 
-uint32_t find_best_node(const std::vector<node_t>& nodes, uint32_t node_index,
+uint32_t find_best_node(const std::vector<node_t> &nodes, uint32_t node_index,
                         uint32_t search_radius) {
-  const node_t&  node       = nodes[node_index];
+  const node_t  &node       = nodes[node_index];
   uint32_t       best_index = node_index;
   float          best_area  = math::infinity;
   const uint32_t node_count = nodes.size();
@@ -48,7 +48,7 @@ uint32_t find_best_node(const std::vector<node_t>& nodes, uint32_t node_index,
   return best_index;
 }
 
-bvh_t build_bvh(const model::raw_mesh_t& mesh) {
+bvh_t build_bvh(const model::raw_mesh_t &mesh) {
   bvh_t bvh{};
 
   std::vector<math::aabb_t> aabbs;
@@ -152,15 +152,14 @@ uint32_t depth_of_bvh(const bvh_t &bvh) { return depth_of_node(bvh, 0); }
 
 float cost_of_node(const bvh_t &bvh, uint32_t node_index) {
   const node_t &node = bvh.nodes[node_index];
-  if (node.is_leaf())
-    return 1.1f * node.prim_count;
-  const node_t &left = bvh.nodes[node.index + 0];
+  if (node.is_leaf()) return 1.1f * node.prim_count;
+  const node_t &left  = bvh.nodes[node.index + 0];
   const node_t &right = bvh.nodes[node.index + 1];
-  float cost = left.aabb().area() * cost_of_node(bvh, node.index + 0) +
+  float         cost  = left.aabb().area() * cost_of_node(bvh, node.index + 0) +
                right.aabb().area() * cost_of_node(bvh, node.index + 1);
   return 1.f + (cost / node.aabb().area());
 }
 
 float cost_of_bvh(const bvh_t &bvh) { return cost_of_node(bvh, 0); }
 
-} // namespace bvh
+}  // namespace bvh
