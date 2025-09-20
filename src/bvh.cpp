@@ -1,17 +1,16 @@
 #include "bvh/bvh.hpp"
-#include <iostream>
 
 #define TINYBVH_USE_CUSTOM_VECTOR_TYPES
 namespace tinybvh {
-using bvhint2 = math::ivec2;
-using bvhint3 = math::ivec3;
+using bvhint2  = math::ivec2;
+using bvhint3  = math::ivec3;
 using bvhuint2 = math::uvec2;
-using bvhvec2 = math::vec2;
-using bvhvec3 = math::vec3;
-using bvhvec4 = math::vec4;
-using bvhdbl3 = math::dvec3;
-using bvhmat4 = math::mat4;
-} // namespace tinybvh
+using bvhvec2  = math::vec2;
+using bvhvec3  = math::vec3;
+using bvhvec4  = math::vec4;
+using bvhdbl3  = math::dvec3;
+using bvhmat4  = math::mat4;
+}  // namespace tinybvh
 #define TINYBVH_IMPLEMENTATION
 #include "tiny_bvh.h"
 
@@ -30,7 +29,7 @@ bvh_t build_bvh(const model::raw_mesh_t &mesh) {
 
   tinybvh::BVH tiny_bvh{};
   tiny_bvh.Build(reinterpret_cast<tinybvh::bvhvec4 *>(bvh.triangles.data()),
-                   static_cast<uint32_t>(bvh.triangles.size()));
+                 static_cast<uint32_t>(bvh.triangles.size()));
 
   bvh.nodes.resize(tiny_bvh.usedNodes);
   static_assert(sizeof(tinybvh::BVH::BVHNode) == sizeof(node_t),
