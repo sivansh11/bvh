@@ -43,6 +43,9 @@ struct bvh_t {
 
 bvh_t build_bvh(const model::raw_mesh_t &mesh);
 
-}  // namespace bvh
+uint32_t depth_of_bvh(const bvh_t &bvh);
+float cost_of_bvh(const bvh_t &bvh);
+
+} // namespace bvh
 
 #endif
