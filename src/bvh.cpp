@@ -199,8 +199,9 @@ bvh_t build_bvh(const model::raw_mesh_t &mesh) {
         {mesh.vertices[mesh.indices[i + 2]].position, 0},
     };
     bvh.triangles.push_back(bvh_triangle);
-    aabbs.push_back(bvh_triangle.aabb());
-    centers.push_back(bvh_triangle.center());
+    math::aabb_t aabb = bvh_triangle.aabb();
+    aabbs.push_back(aabb);
+    centers.push_back(aabb.center());
   }
 
   uint32_t primitive_count = aabbs.size();
