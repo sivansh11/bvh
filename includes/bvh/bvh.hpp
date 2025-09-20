@@ -15,6 +15,7 @@ struct node_t {
   math::vec3 max;
   uint32_t prim_count; // 16 bytes, total: 32 bytes
   bool is_leaf() const { return prim_count != 0; }
+  math::aabb_t aabb() const { return math::aabb_t{min, max}; }
 };
 static_assert(sizeof(node_t) == 32, "sizeof(node_t) should be 32 bytes");
 
