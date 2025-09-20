@@ -302,6 +302,9 @@ int main(int argc, char **argv) {
 
   bvh::bvh_t bvh = bvh::build_bvh(mesh);
 
+  std::cout << "depth of bvh: " << bvh::depth_of_bvh(bvh) << '\n';
+  std::cout << "cost of bvh: " << bvh::cost_of_bvh(bvh) << '\n';
+
   image_t  image{640, 420};
   camera_t camera{90.f, {0, 1, 2}, {0, 1, 0}};
   camera.set_dimentions(image._width, image._height);
