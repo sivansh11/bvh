@@ -75,10 +75,12 @@ split_t find_best_object_split(bvh_t &bvh, uint32_t node_index,
     float scale = static_cast<float>(num_samples) /
                   (split_bounds.max[axis] - split_bounds.min[axis]);
     for (uint32_t i = 0; i < node.prim_count; i++) {
-      uint32_t bin_index = std::min(
-          num_samples - 1, static_cast<uint32_t>((
-                               centers[bvh.prim_indices[node.index + i]][axis] -
-                               split_bounds.min[axis]) * scale));
+      uint32_t bin_index =
+          std::min(num_samples - 1,
+                   static_cast<uint32_t>(
+                       (centers[bvh.prim_indices[node.index + i]][axis] -
+                        split_bounds.min[axis]) *
+                       scale));
       bins[bin_index].prim_count++;
       bins[bin_index].aabb.grow(aabbs[bvh.prim_indices[node.index + i]]);
     }
@@ -169,9 +171,9 @@ void split_node(bvh_t &bvh, uint32_t node_index, split_t split,
 void try_split_node(bvh_t &bvh, uint32_t node_index, math::aabb_t *aabbs,
                     math::vec3 *centers) {
   node_t &node = bvh.nodes[node_index];
-  if (node.prim_count <= 2) return;
+  if (node.prim_count <= 1) return;
 
-  if (node.prim_count > 8) {
+  if (node.prim_count > 1) {
     const split_t split =
         find_best_object_split(bvh, node_index, aabbs, centers);
     split_node(bvh, node_index, split, aabbs, centers);
