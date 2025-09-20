@@ -86,7 +86,7 @@ bvh_t build_bvh(const model::raw_mesh_t &mesh) {
                       (math::vec3{1024} /
                        math::vec3{center_aabb.max - center_aabb.min})));
     morton_codes[i] =
-        encode(grid_position.x, grid_position.y, grid_position.z, 5);
+        encode(grid_position.x, grid_position.y, grid_position.z, 10);
   }
 
   std::sort(bvh.prim_indices.begin(), bvh.prim_indices.end(),
