@@ -19,19 +19,6 @@ struct node_t {
 };
 static_assert(sizeof(node_t) == 32, "sizeof(node_t) should be 32 bytes");
 
-struct gpu_node_t {
-  math::vec3 lmin;
-  uint32_t left;
-  math::vec3 lmax;
-  uint32_t right;
-  math::vec3 rmin;
-  uint32_t triCount;
-  math::vec3 rmax;
-  uint32_t firstTri;
-};
-static_assert(sizeof(gpu_node_t) == 64,
-              "sizeof(gpu_node_t) should be 64 bytes");
-
 struct bvh_triangle_t {
   math::vec4 v0;
   math::vec4 v1;
@@ -44,14 +31,7 @@ struct bvh_t {
   std::vector<uint32_t> prim_indices;
 };
 
-struct gpu_bvh_t {
-  std::vector<gpu_node_t> nodes;
-  std::vector<bvh_triangle_t> triangles;
-  std::vector<uint32_t> prim_indices;
-};
-
 bvh_t build_bvh(const model::raw_mesh_t &mesh);
-gpu_bvh_t build_gpu_bvh(const model::raw_mesh_t &mesh);
 
 uint32_t depth_of_bvh(const bvh_t &bvh);
 float cost_of_bvh(const bvh_t &bvh);
