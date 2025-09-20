@@ -57,19 +57,30 @@ uint32_t depth_of_node(const bvh_t &bvh, uint32_t node_id) {
   throw std::runtime_error("shouldnt reach here");
 }
 
-uint32_t depth_of_bvh(const bvh_t &bvh) { return depth_of_node(bvh, 0); }
+uint32_t depth_of_bvh(const bvh_t &bvh) {
+  uint32_t depth = 0, stack[64], stack_top = 0;
+  stack[stack_top++] = 0;
+  while (stack_top) {
+    depth       = std::max(stack_top + 1, depth);
+    node_t node = bvh.nodes[stack[--stack_top]];
+    if (!node.is_leaf()) {
+      stack[stack_top++] = node.index + 0;
+      stack[stack_top++] = node.index + 1;
+    }
+  }
+  return depth;
+}
 
 float cost_of_node(const bvh_t &bvh, uint32_t node_index) {
   const node_t &node = bvh.nodes[node_index];
-  if (node.is_leaf())
-    return 1.1f * node.prim_count;
-  const node_t &left = bvh.nodes[node.index + 0];
+  if (node.is_leaf()) return 1.1f * node.prim_count;
+  const node_t &left  = bvh.nodes[node.index + 0];
   const node_t &right = bvh.nodes[node.index + 1];
-  float cost = left.aabb().area() * cost_of_node(bvh, node.index + 0) +
+  float         cost  = left.aabb().area() * cost_of_node(bvh, node.index + 0) +
                right.aabb().area() * cost_of_node(bvh, node.index + 1);
   return 1.f + (cost / node.aabb().area());
 }
 
 float cost_of_bvh(const bvh_t &bvh) { return cost_of_node(bvh, 0); }
 
-} // namespace bvh
+}  // namespace bvh
