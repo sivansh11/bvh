@@ -191,6 +191,8 @@ bvh_t build_bvh(const model::raw_mesh_t &mesh) {
 
   fix_primitive_indices(bvh);
 
+  collapse_nodes(bvh, 0);
+
   return bvh;
 }
 
