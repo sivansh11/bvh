@@ -186,6 +186,7 @@ void try_split_node(bvh_t &bvh, uint32_t node_index, math::aabb_t *aabbs,
   }
 }
 
+// TODO: clean dead nodes
 void collapse_nodes(bvh_t &bvh, uint32_t node_index) {
   node_t &node = bvh.nodes[node_index];
   if (node.is_leaf()) return;
