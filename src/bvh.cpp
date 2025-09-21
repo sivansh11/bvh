@@ -186,6 +186,26 @@ void try_split_node(bvh_t &bvh, uint32_t node_index, math::aabb_t *aabbs,
   }
 }
 
+void collapse_nodes(bvh_t &bvh, uint32_t node_index) {
+  node_t &node = bvh.nodes[node_index];
+  if (node.is_leaf()) return;
+  collapse_nodes(bvh, node.index + 0);
+  collapse_nodes(bvh, node.index + 1);
+  node_t &left  = bvh.nodes[node.index + 0];
+  node_t &right = bvh.nodes[node.index + 1];
+  if (left.is_leaf() && right.is_leaf()) {
+    float real_cost    = cost_of_node(bvh, node_index);
+    float cost_if_leaf = 1.1f * (left.prim_count + right.prim_count);
+    if (cost_if_leaf <= real_cost) {
+      assert(right.index == left.index + left.prim_count);
+      node.prim_count  = left.prim_count + right.prim_count;
+      node.index       = left.index;
+      left.prim_count  = 0;
+      right.prim_count = 0;
+    }
+  }
+}
+
 bvh_t build_bvh(const model::raw_mesh_t &mesh) {
   bvh_t bvh{};
 
@@ -215,6 +235,8 @@ bvh_t build_bvh(const model::raw_mesh_t &mesh) {
 
   update_node_bounds(bvh, 0, aabbs.data());
   try_split_node(bvh, 0, aabbs.data(), centers.data());
+
+  collapse_nodes(bvh, 0);
 
   return bvh;
 }
