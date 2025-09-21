@@ -1,3 +1,4 @@
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -300,7 +301,14 @@ int main(int argc, char **argv) {
   model                    = model::merge_meshes(model);
   model::raw_mesh_t &mesh  = model.meshes[0];
 
-  bvh::bvh_t bvh = bvh::build_bvh(mesh);
+  auto       start = std::chrono::high_resolution_clock::now();
+  bvh::bvh_t bvh   = bvh::build_bvh(mesh);
+  auto       end   = std::chrono::high_resolution_clock::now();
+  std::cout << "builder took: "
+            << std::chrono::duration_cast<std::chrono::milliseconds>(end -
+                                                                     start)
+                   .count()
+            << "ms\n";
 
   std::cout << "depth of bvh: " << bvh::depth_of_bvh(bvh) << '\n';
   std::cout << "cost of bvh: " << bvh::cost_of_bvh(bvh) << '\n';
