@@ -33,6 +33,12 @@ struct bvh_triangle_t {
     math::vec3 _v2 = v2;
     return (_v0 + _v1 + _v2) / 3.f;
   }
+  float area() const {
+    math::vec3 e1 = v1 - v0;
+    math::vec3 e2 = v2 - v0;
+    return math::cross(e1, e2).length() * 2.f;
+  }
+  std::pair<math::aabb_t, math::aabb_t> split(uint32_t axis, float position) const;
 };
 
 struct bvh_t {
@@ -44,8 +50,8 @@ struct bvh_t {
 bvh_t build_bvh(const model::raw_mesh_t &mesh);
 
 uint32_t depth_of_bvh(const bvh_t &bvh);
-float cost_of_bvh(const bvh_t &bvh);
+float    cost_of_bvh(const bvh_t &bvh);
 
-} // namespace bvh
+}  // namespace bvh
 
 #endif
