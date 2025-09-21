@@ -48,6 +48,28 @@ uint32_t find_best_node(const std::vector<node_t> &nodes, uint32_t node_index,
   return best_index;
 }
 
+void reorder_indices(bvh_t &bvh, std::vector<uint32_t> &reordered_indices,
+                     uint32_t node_index) {
+  node_t &node = bvh.nodes[node_index];
+  if (node.is_leaf()) {
+    uint32_t start_index = reordered_indices.size();
+    for (uint32_t i = 0; i < node.prim_count; i++) {
+      reordered_indices.push_back(bvh.prim_indices[node.index + i]);
+    }
+    node.index = start_index;
+    return;
+  }
+  reorder_indices(bvh, reordered_indices, node.index + 0);
+  reorder_indices(bvh, reordered_indices, node.index + 1);
+}
+
+void fix_primitive_indices(bvh_t &bvh) {
+  std::vector<uint32_t> reordered_indices;
+  reordered_indices.reserve(bvh.prim_indices.size());
+  reorder_indices(bvh, reordered_indices, 0);
+  bvh.prim_indices = reordered_indices;
+}
+
 bvh_t build_bvh(const model::raw_mesh_t &mesh) {
   bvh_t bvh{};
 
@@ -136,6 +158,8 @@ bvh_t build_bvh(const model::raw_mesh_t &mesh) {
   assert(insertion_index == 1);
 
   bvh.nodes[0] = current_nodes[0];
+
+  fix_primitive_indices(bvh);
 
   return bvh;
 }
