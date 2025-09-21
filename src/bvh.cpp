@@ -266,7 +266,7 @@ uint32_t num_splits(float total_priority, const bvh_triangle_t triangle,
                     uint32_t triangle_count) {
   float share =
       priority(triangle.aabb(), triangle) / total_priority * triangle_count;
-  return 1 + (uint32_t)(share * 0.3);  // split factor
+  return 1 + (uint32_t)(share * 0.3f);  // split factor
 }
 
 float get_cell_size(float alpha) {
