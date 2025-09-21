@@ -80,6 +80,7 @@ float cost_of_node(const bvh_t &bvh, uint32_t node_index) {
   return 1.f + (cost / node.aabb().area());
 }
 
+// TODO: clean dead nodes
 void collapse_nodes(bvh_t &bvh, uint32_t node_index) {
   node_t &node = bvh.nodes[node_index];
   if (node.is_leaf()) return;
