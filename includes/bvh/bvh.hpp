@@ -36,7 +36,7 @@ struct bvh_triangle_t {
   float area() const {
     math::vec3 e1 = v1 - v0;
     math::vec3 e2 = v2 - v0;
-    return math::cross(e1, e2).length() * 2.f;
+    return math::cross(e1, e2).length() * 0.5f;
   }
   std::pair<math::aabb_t, math::aabb_t> split(uint32_t axis, float position) const;
 };
