@@ -257,15 +257,15 @@ void collapse_nodes(bvh_t &bvh, uint32_t node_index) {
   }
 }
 
-float priority(const math::aabb_t aabb, const bvh_triangle_t triangle) {
-  return std::cbrt(std::pow(aabb.largest_extent(), 2.f) * aabb.area() *
-                   triangle.area());
+float priority(const bvh_triangle_t triangle) {
+  const math::aabb_t aabb = triangle.aabb();
+  return std::cbrt(std::pow(aabb.largest_extent(), 2.f) *
+                   (aabb.area() - triangle.area()));
 }
 
 uint32_t num_splits(float total_priority, const bvh_triangle_t triangle,
                     uint32_t triangle_count) {
-  float share =
-      priority(triangle.aabb(), triangle) / total_priority * triangle_count;
+  float share = priority(triangle) / total_priority * triangle_count;
   return 1 + (uint32_t)(share * 0.3f);  // split factor
 }
 
@@ -282,12 +282,15 @@ std::pair<std::vector<math::aabb_t>, std::vector<uint32_t>> presplit(
   math::vec3 global_extent = global_aabb.extent();
 
   float total_priority = 0;
-  for (const auto &triangle : triangles)
-    total_priority += priority(triangle.aabb(), triangle);
+  for (const auto &triangle : triangles) total_priority += priority(triangle);
 
   uint32_t total_splits = 0;
   for (const auto &triangle : triangles)
     total_splits += num_splits(total_priority, triangle, triangles.size());
+
+  std::cout << "total_priority: " << total_priority << '\n';
+  std::cout << "total_splits: " << total_splits << '\n';
+  std::cout << "total_tris: " << triangles.size() << '\n';
 
   std::vector<math::aabb_t> aabbs(total_splits);
   std::vector<uint32_t>     tri_indices(total_splits);
@@ -341,7 +344,7 @@ std::pair<std::vector<math::aabb_t>, std::vector<uint32_t>> presplit(
       float left_extent  = l_aabb.largest_extent();
       float right_extent = r_aabb.largest_extent();
 
-      uint32_t left_count = math::round(
+      uint32_t left_count = (uint32_t)math::round(
           splits_left * (left_extent / (left_extent + right_extent)));
       left_count = math::clamp(left_count, 1u, splits_left - 1);
 
