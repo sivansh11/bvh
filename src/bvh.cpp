@@ -265,8 +265,10 @@ float priority(const bvh_triangle_t triangle) {
 
 uint32_t num_splits(float total_priority, const bvh_triangle_t triangle,
                     uint32_t triangle_count) {
-  float share = priority(triangle) / total_priority * triangle_count;
-  return 1 + (uint32_t)(share * 0.3f);  // split factor
+  return 1 + (uint32_t)(priority(triangle) *
+                        (triangle_count * 0.3f / total_priority));
+  //  float share = priority(triangle) / total_priority * triangle_count;
+  //  return 1 + (uint32_t)(share * 0.3f);  // split factor
 }
 
 float get_cell_size(float alpha) {
@@ -320,8 +322,10 @@ std::pair<std::vector<math::aabb_t>, std::vector<uint32_t>> presplit(
       uint32_t split_axis     = aabb.largest_axis();
       float    largest_extent = aabb.largest_extent();
 
-      float alpha     = largest_extent / global_extent[split_axis];
-      float cell_size = get_cell_size(alpha) * global_extent[split_axis];
+      float depth =
+          std::min(-1.f, std::floor(std::log2(aabb.largest_extent() /
+                                              global_extent[split_axis])));
+      float cell_size = std::exp2(depth) * global_extent[split_axis];
       if (cell_size >= largest_extent - 0.0001f) {
         cell_size *= 0.5f;
       }
