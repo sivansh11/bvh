@@ -105,6 +105,18 @@ float cost_of_node(const bvh_t &bvh, uint32_t node_index) {
   return 1.f + (cost / node.aabb().area());
 }
 
+uint32_t depth_of_node(const bvh_t &bvh, uint32_t node_id) {
+  const node_t &node = bvh.nodes[node_id];
+  if (node.is_leaf()) return 0;
+  return std::max(depth_of_node(bvh, node.index + 0),
+                  depth_of_node(bvh, node.index + 1)) +
+         1;
+}
+
+uint32_t depth_of_bvh(const bvh_t &bvh) { return depth_of_node(bvh, 0); }
+
+float cost_of_bvh(const bvh_t &bvh) { return cost_of_node(bvh, 0); }
+
 float greedy_cost_of_node(uint32_t left_count, uint32_t right_count,
                           float left_aabb_area, float right_aabb_area,
                           float parent_aabb_area) {
@@ -656,17 +668,5 @@ bvh_t build_bvh(const model::raw_mesh_t &mesh) {
 
   return bvh;
 }
-
-uint32_t depth_of_node(const bvh_t &bvh, uint32_t node_id) {
-  const node_t &node = bvh.nodes[node_id];
-  if (node.is_leaf()) return 0;
-  return std::max(depth_of_node(bvh, node.index + 0),
-                  depth_of_node(bvh, node.index + 1)) +
-         1;
-}
-
-uint32_t depth_of_bvh(const bvh_t &bvh) { return depth_of_node(bvh, 0); }
-
-float cost_of_bvh(const bvh_t &bvh) { return cost_of_node(bvh, 0); }
 
 }  // namespace bvh
