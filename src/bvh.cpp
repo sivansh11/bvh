@@ -627,7 +627,6 @@ bvh_t build_bvh_ploc(const std::vector<math::aabb_t> &aabbs, uint32_t grid_dim,
 
   std::set<uint32_t> deadnodes;
   collapse_nodes(bvh, 0, deadnodes);
-
   remove_deadnodes(bvh, deadnodes);
 
   return bvh;
