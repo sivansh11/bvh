@@ -37,6 +37,7 @@ struct bvh_t {
   std::vector<bvh_triangle_t> triangles;
 };
 
+std::vector<bvh_triangle_t> triangles_from_mesh(const model::raw_mesh_t &mesh);
 std::pair<std::vector<math::aabb_t>, std::vector<uint32_t>> presplit(
     const std::vector<bvh_triangle_t> &triangles, float split_factor = 0.3f);
 bvh_t build_bvh_binned_sah(const std::vector<math::aabb_t> &aabbs,
