@@ -238,24 +238,49 @@ void try_split_node(bvh_t &bvh, uint32_t node_index, math::aabb_t *aabbs,
 }
 
 // TODO: clean dead nodes
-void collapse_nodes(bvh_t &bvh, uint32_t node_index) {
+void collapse_nodes(bvh_t &bvh, uint32_t node_index,
+                    std::set<uint32_t> &deadnodes) {
   node_t &node = bvh.nodes[node_index];
   if (node.is_leaf()) return;
-  collapse_nodes(bvh, node.index + 0);
-  collapse_nodes(bvh, node.index + 1);
-  node_t &left  = bvh.nodes[node.index + 0];
-  node_t &right = bvh.nodes[node.index + 1];
+  collapse_nodes(bvh, node.index + 0, deadnodes);
+  collapse_nodes(bvh, node.index + 1, deadnodes);
+  uint32_t left_index  = node.index + 0;
+  uint32_t right_index = node.index + 1;
+  node_t  &left        = bvh.nodes[left_index];
+  node_t  &right       = bvh.nodes[right_index];
   if (left.is_leaf() && right.is_leaf()) {
     float real_cost    = cost_of_node(bvh, node_index);
     float cost_if_leaf = 1.1f * (left.prim_count + right.prim_count);
     if (cost_if_leaf <= real_cost) {
       assert(right.index == left.index + left.prim_count);
+      deadnodes.emplace(left_index);
+      deadnodes.emplace(right_index);
       node.prim_count  = left.prim_count + right.prim_count;
       node.index       = left.index;
       left.prim_count  = 0;
       right.prim_count = 0;
     }
   }
+}
+
+void remove_dead_nodes(bvh_t &bvh, const std::set<uint32_t> &deadnodes) {
+  std::vector<node_t>   nodes;
+  std::vector<uint32_t> old_to_new_index(bvh.nodes.size());
+  std::vector<uint32_t> new_to_old;
+  for (uint32_t i = 0; i < bvh.nodes.size(); i++) {
+    if (!deadnodes.contains(i)) {
+      uint32_t new_node_index = nodes.size();
+      old_to_new_index[i]     = new_node_index;
+      nodes.push_back(bvh.nodes[i]);
+      new_to_old.push_back(i);
+    }
+  }
+  for (uint32_t i = 0; i < nodes.size(); i++) {
+    if (!nodes[i].is_leaf()) {
+      nodes[i].index = old_to_new_index[nodes[i].index];
+    }
+  }
+  bvh.nodes = nodes;
 }
 
 float priority(const bvh_triangle_t triangle) {
@@ -393,7 +418,9 @@ bvh_t build_bvh(const model::raw_mesh_t &mesh) {
   update_node_bounds(bvh, 0, aabbs.data());
   try_split_node(bvh, 0, aabbs.data(), centers.data());
 
-  collapse_nodes(bvh, 0);
+  std::set<uint32_t> deadnodes;
+  collapse_nodes(bvh, 0, deadnodes);
+  remove_dead_nodes(bvh, deadnodes);
 
   for (auto &node : bvh.nodes) {
     if (!node.is_leaf()) continue;
