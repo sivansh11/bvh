@@ -38,9 +38,11 @@ struct bvh_t {
 };
 
 std::vector<bvh_triangle_t> triangles_from_mesh(const model::raw_mesh_t &mesh);
-void                        presplit_remove_indirection(bvh_t                       &bvh,
-                                                        const std::vector<uint32_t> &tri_indices);
-void                        presplit_remove_duplicates(bvh_t &bvh);
+std::vector<math::aabb_t>   aabbs_from_triangles(
+      const std::vector<bvh_triangle_t> &triangles);
+void presplit_remove_indirection(bvh_t                       &bvh,
+                                 const std::vector<uint32_t> &tri_indices);
+void presplit_remove_duplicates(bvh_t &bvh);
 std::pair<std::vector<math::aabb_t>, std::vector<uint32_t>> presplit(
     const std::vector<bvh_triangle_t> &triangles, float split_factor = 0.3f);
 bvh_t build_bvh_binned_sah(const std::vector<math::aabb_t> &aabbs,

@@ -458,6 +458,15 @@ std::vector<bvh_triangle_t> triangles_from_mesh(const model::raw_mesh_t &mesh) {
   return triangles;
 }
 
+std::vector<math::aabb_t> aabbs_from_triangles(
+    const std::vector<bvh_triangle_t> &triangles) {
+  std::vector<math::aabb_t> aabbs;
+  for (auto &triangle : triangles) {
+    aabbs.push_back(triangle.aabb());
+  }
+  return aabbs;
+}
+
 uint64_t split_morton(uint64_t x, int log_bits) {
   const int bit_count = 1 << log_bits;
   uint64_t  mask      = ((uint64_t)-1) >> (bit_count / 2);
