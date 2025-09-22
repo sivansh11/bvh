@@ -2,6 +2,7 @@
 #define BVH_BVH_HPP
 
 #include <cstdint>
+#include <filesystem>
 #include <vector>
 
 #include "math/aabb.hpp"
@@ -57,6 +58,9 @@ bvh_t build_bvh(const model::raw_mesh_t &mesh);
 
 uint32_t depth_of_bvh(const bvh_t &bvh);
 float    cost_of_bvh(const bvh_t &bvh);
+
+void  save(const bvh_t &bvh, const std::filesystem::path &path);
+bvh_t load(const std::filesystem::path &path);
 
 }  // namespace bvh
 
