@@ -21,24 +21,14 @@ struct node_t {
 static_assert(sizeof(node_t) == 32, "sizeof(node_t) should be 32 bytes");
 
 struct bvh_triangle_t {
-  math::vec4   v0;
-  math::vec4   v1;
-  math::vec4   v2;
-  math::aabb_t aabb() const {
-    return math::aabb_t{}.grow(v0).grow(v1).grow(v2);
-  }
-  math::vec3 center() const {
-    math::vec3 _v0 = v0;
-    math::vec3 _v1 = v1;
-    math::vec3 _v2 = v2;
-    return (_v0 + _v1 + _v2) / 3.f;
-  }
-  float area() const {
-    math::vec3 e1 = v1 - v0;
-    math::vec3 e2 = v2 - v0;
-    return math::length(math::cross(e1, e2)) * 0.5f;
-  }
-  std::pair<math::aabb_t, math::aabb_t> split(uint32_t axis, float position) const;
+  math::vec4                            v0;
+  math::vec4                            v1;
+  math::vec4                            v2;
+  math::aabb_t                          aabb() const;
+  math::vec3                            center() const;
+  float                                 area() const;
+  std::pair<math::aabb_t, math::aabb_t> split(uint32_t axis,
+                                              float    position) const;
 };
 
 struct bvh_t {
@@ -47,6 +37,16 @@ struct bvh_t {
   std::vector<bvh_triangle_t> triangles;
 };
 
+std::pair<std::vector<math::aabb_t>, std::vector<uint32_t>> presplit(
+    const std::vector<bvh_triangle_t> &triangles, float split_factor = 0.3f);
+bvh_t build_bvh_binned_sah(const std::vector<math::aabb_t> &aabbs,
+                           uint32_t                         num_samples    = 8,
+                           uint32_t                         min_primitives = 1,
+                           uint32_t                         max_primitives = 1);
+bvh_t build_bvh_ploc(const std::vector<math::aabb_t> &aabbs,
+                     uint32_t grid_dim = 1024, uint32_t log_bits = 10,
+                     uint32_t search_radius = 15);
+// create bvh with default parameters
 bvh_t build_bvh(const model::raw_mesh_t &mesh);
 
 uint32_t depth_of_bvh(const bvh_t &bvh);

@@ -16,8 +16,24 @@
 #include "math/aabb.hpp"
 #include "math/math.hpp"
 #include "math/triangle.hpp"
+#include "model/model.hpp"
 
 namespace bvh {
+
+math::aabb_t bvh_triangle_t::aabb() const {
+  return math::aabb_t{}.grow(v0).grow(v1).grow(v2);
+}
+math::vec3 bvh_triangle_t::center() const {
+  math::vec3 _v0 = v0;
+  math::vec3 _v1 = v1;
+  math::vec3 _v2 = v2;
+  return (_v0 + _v1 + _v2) / 3.f;
+}
+float bvh_triangle_t::area() const {
+  math::vec3 e1 = v1 - v0;
+  math::vec3 e2 = v2 - v0;
+  return math::length(math::cross(e1, e2)) * 0.5f;
+}
 
 math::vec3 split_edge(const math::vec3 a, const math::vec3 b, uint32_t axis,
                       float position) {
@@ -65,7 +81,8 @@ std::pair<math::aabb_t, math::aabb_t> bvh_triangle_t::split(
   return {l_aabb, r_aabb};
 }
 
-void update_node_bounds(bvh_t &bvh, uint32_t node_index, math::aabb_t *aabbs) {
+void update_node_bounds(bvh_t &bvh, uint32_t node_index,
+                        const math::aabb_t *aabbs) {
   node_t &node = bvh.nodes[node_index];
   if (node.is_leaf()) {
     math::aabb_t aabb{};
@@ -108,9 +125,9 @@ struct bin_t {
 };
 
 split_t find_best_object_split(bvh_t &bvh, uint32_t node_index,
-                               math::aabb_t *aabbs, math::vec3 *centers) {
-  const uint32_t num_samples = 8;
-
+                               const math::aabb_t *aabbs,
+                               const math::vec3   *centers,
+                               const uint32_t      num_samples) {
   node_t      &node = bvh.nodes[node_index];
   split_t      best_split{};
   math::aabb_t split_bounds{};
@@ -170,7 +187,7 @@ split_t find_best_object_split(bvh_t &bvh, uint32_t node_index,
 }
 
 uint32_t partition_primitive_indices(bvh_t &bvh, uint32_t node_index,
-                                     split_t split, math::vec3 *centers) {
+                                     split_t split, const math::vec3 *centers) {
   node_t &node = bvh.nodes[node_index];
   auto    middle =
       std::partition(bvh.prim_indices.begin() + node.index,
@@ -181,11 +198,14 @@ uint32_t partition_primitive_indices(bvh_t &bvh, uint32_t node_index,
   return std::distance(bvh.prim_indices.begin(), middle);
 }
 
-void try_split_node(bvh_t &bvh, uint32_t node_index, math::aabb_t *aabbs,
-                    math::vec3 *centers);
+void try_split_node(bvh_t &bvh, uint32_t node_index, const math::aabb_t *aabbs,
+                    const math::vec3 *centers, uint32_t num_samples,
+                    uint32_t min_primitives, uint32_t max_primitives);
 
 void split_node(bvh_t &bvh, uint32_t node_index, split_t split,
-                math::aabb_t *aabbs, math::vec3 *centers) {
+                const math::aabb_t *aabbs, const math::vec3 *centers,
+                uint32_t num_samples, uint32_t min_primitives,
+                uint32_t max_primitives) {
   if (split.axis == std::numeric_limits<uint32_t>::max()) return;
   node_t &node = bvh.nodes[node_index];
 
@@ -215,24 +235,30 @@ void split_node(bvh_t &bvh, uint32_t node_index, split_t split,
   update_node_bounds(bvh, left_node_index, aabbs);
   update_node_bounds(bvh, right_node_index, aabbs);
 
-  try_split_node(bvh, left_node_index, aabbs, centers);
-  try_split_node(bvh, right_node_index, aabbs, centers);
+  try_split_node(bvh, left_node_index, aabbs, centers, num_samples,
+                 min_primitives, max_primitives);
+  try_split_node(bvh, right_node_index, aabbs, centers, num_samples,
+                 min_primitives, max_primitives);
 }
 
-void try_split_node(bvh_t &bvh, uint32_t node_index, math::aabb_t *aabbs,
-                    math::vec3 *centers) {
+void try_split_node(bvh_t &bvh, uint32_t node_index, const math::aabb_t *aabbs,
+                    const math::vec3 *centers, uint32_t num_samples,
+                    uint32_t min_primitives, uint32_t max_primitives) {
   node_t &node = bvh.nodes[node_index];
-  if (node.prim_count <= 1) return;
+  if (node.prim_count <= min_primitives) return;
 
-  if (node.prim_count > 1) {
+  if (node.prim_count > max_primitives) {
     const split_t split =
-        find_best_object_split(bvh, node_index, aabbs, centers);
-    split_node(bvh, node_index, split, aabbs, centers);
+        find_best_object_split(bvh, node_index, aabbs, centers, num_samples);
+    split_node(bvh, node_index, split, aabbs, centers, num_samples,
+               min_primitives, max_primitives);
   } else {
     float   no_split_cost = cost_of_node(bvh, node_index);
-    split_t split = find_best_object_split(bvh, node_index, aabbs, centers);
+    split_t split =
+        find_best_object_split(bvh, node_index, aabbs, centers, num_samples);
     if (split.cost < no_split_cost) {
-      split_node(bvh, node_index, split, aabbs, centers);
+      split_node(bvh, node_index, split, aabbs, centers, num_samples,
+                 min_primitives, max_primitives);
     }
   }
 }
@@ -263,7 +289,7 @@ void collapse_nodes(bvh_t &bvh, uint32_t node_index,
   }
 }
 
-void remove_dead_nodes(bvh_t &bvh, const std::set<uint32_t> &deadnodes) {
+void remove_deadnodes(bvh_t &bvh, const std::set<uint32_t> &deadnodes) {
   std::vector<node_t>   nodes;
   std::vector<uint32_t> old_to_new_index(bvh.nodes.size());
   std::vector<uint32_t> new_to_old;
@@ -290,21 +316,13 @@ float priority(const bvh_triangle_t triangle) {
 }
 
 uint32_t num_splits(float total_priority, const bvh_triangle_t triangle,
-                    uint32_t triangle_count) {
+                    uint32_t triangle_count, float split_factor) {
   return 1 + (uint32_t)(priority(triangle) *
-                        (triangle_count * 0.3f / total_priority));
-  //  float share = priority(triangle) / total_priority * triangle_count;
-  //  return 1 + (uint32_t)(share * 0.3f);  // split factor
-}
-
-float get_cell_size(float alpha) {
-  uint32_t float_bits = std::bit_cast<uint32_t>(alpha);
-  float_bits &= 255u << 23;
-  return std::bit_cast<float>(float_bits);
+                        (triangle_count * split_factor / total_priority));
 }
 
 std::pair<std::vector<math::aabb_t>, std::vector<uint32_t>> presplit(
-    const std::vector<bvh_triangle_t> &triangles) {
+    const std::vector<bvh_triangle_t> &triangles, float split_factor) {
   math::aabb_t global_aabb{};
   for (const auto &triangle : triangles) global_aabb.grow(triangle.aabb());
   math::vec3 global_extent = global_aabb.extent();
@@ -314,7 +332,8 @@ std::pair<std::vector<math::aabb_t>, std::vector<uint32_t>> presplit(
 
   uint32_t total_splits = 0;
   for (const auto &triangle : triangles)
-    total_splits += num_splits(total_priority, triangle, triangles.size());
+    total_splits +=
+        num_splits(total_priority, triangle, triangles.size(), split_factor);
 
   std::cout << "total_priority: " << total_priority << '\n';
   std::cout << "total_splits: " << total_splits << '\n';
@@ -331,7 +350,7 @@ std::pair<std::vector<math::aabb_t>, std::vector<uint32_t>> presplit(
     const bvh_triangle_t &triangle = triangles[i];
 
     uint32_t split_count =
-        num_splits(total_priority, triangle, triangles.size());
+        num_splits(total_priority, triangle, triangles.size(), split_factor);
 
     uint32_t stack_top = 0;
     stack[stack_top++] = {triangle.aabb(), split_count};
@@ -388,40 +407,8 @@ std::pair<std::vector<math::aabb_t>, std::vector<uint32_t>> presplit(
   return {aabbs, tri_indices};
 }
 
-bvh_t build_bvh(const model::raw_mesh_t &mesh) {
-  bvh_t bvh{};
-
-  for (uint32_t i = 0; i < mesh.indices.size(); i += 3) {
-    bvh_triangle_t bvh_triangle{
-        {mesh.vertices[mesh.indices[i + 0]].position, 0},
-        {mesh.vertices[mesh.indices[i + 1]].position, 0},
-        {mesh.vertices[mesh.indices[i + 2]].position, 0},
-    };
-    bvh.triangles.push_back(bvh_triangle);
-  }
-
-  auto [aabbs, tri_indices] = presplit(bvh.triangles);
-
-  std::vector<math::vec3> centers;
-
-  for (const auto &aabb : aabbs) centers.push_back(aabb.center());
-
-  uint32_t primitive_count = aabbs.size();
-
-  for (uint32_t i = 0; i < primitive_count; i++) bvh.prim_indices.push_back(i);
-
-  node_t root;
-  root.index      = 0;
-  root.prim_count = primitive_count;
-  bvh.nodes.push_back(root);
-
-  update_node_bounds(bvh, 0, aabbs.data());
-  try_split_node(bvh, 0, aabbs.data(), centers.data());
-
-  std::set<uint32_t> deadnodes;
-  collapse_nodes(bvh, 0, deadnodes);
-  remove_dead_nodes(bvh, deadnodes);
-
+void presplit_remove_indirection(bvh_t                       &bvh,
+                                 const std::vector<uint32_t> &tri_indices) {
   for (auto &node : bvh.nodes) {
     if (!node.is_leaf()) continue;
     for (uint32_t i = 0; i < node.prim_count; i++) {
@@ -430,7 +417,9 @@ bvh_t build_bvh(const model::raw_mesh_t &mesh) {
       bvh.prim_indices[node.index + i] = tri_index;
     }
   }
+}
 
+void presplit_remove_duplicates(bvh_t &bvh) {
   std::vector<uint32_t> prim_indices{};
   uint32_t              stack[64], stack_top = 0;
   stack[stack_top++] = 0;
@@ -454,6 +443,208 @@ bvh_t build_bvh(const model::raw_mesh_t &mesh) {
     }
   }
   bvh.prim_indices = prim_indices;
+}
+
+std::vector<bvh_triangle_t> triangles_from_mesh(const model::raw_mesh_t &mesh) {
+  std::vector<bvh_triangle_t> triangles;
+  for (uint32_t i = 0; i < mesh.indices.size(); i += 3) {
+    bvh_triangle_t bvh_triangle{
+        {mesh.vertices[mesh.indices[i + 0]].position, 0},
+        {mesh.vertices[mesh.indices[i + 1]].position, 0},
+        {mesh.vertices[mesh.indices[i + 2]].position, 0},
+    };
+    triangles.push_back(bvh_triangle);
+  }
+  return triangles;
+}
+
+uint64_t split_morton(uint64_t x, int log_bits) {
+  const int bit_count = 1 << log_bits;
+  uint64_t  mask      = ((uint64_t)-1) >> (bit_count / 2);
+  x &= mask;
+  for (int i = log_bits - 1, n = 1 << i; i > 0; --i, n >>= 1) {
+    mask = (mask | (mask << n)) & ~(mask << (n / 2));
+    x    = (x | (x << n)) & mask;
+  }
+  return x;
+}
+
+uint64_t encode_morton(uint64_t x, uint64_t y, uint64_t z, int log_bits) {
+  return split_morton(x, log_bits) | (split_morton(y, log_bits) << 1) |
+         (split_morton(z, log_bits) << 2);
+}
+
+uint32_t find_best_node(const std::vector<node_t> &nodes, uint32_t node_index,
+                        uint32_t search_radius) {
+  const node_t  &node       = nodes[node_index];
+  uint32_t       best_index = node_index;
+  float          best_area  = math::infinity;
+  const uint32_t node_count = nodes.size();
+  uint32_t start = node_index > search_radius ? node_index - search_radius : 0;
+  uint32_t stop  = node_index + search_radius + 1 < node_count
+                       ? node_index + search_radius + 1
+                       : node_count;
+  for (uint32_t index = start; index < stop; index++) {
+    if (index == node_index) continue;
+    float area = node.aabb().grow(nodes[index].aabb()).area();
+    if (area < best_area) {
+      best_area  = area;
+      best_index = index;
+    }
+  }
+  return best_index;
+}
+
+void reorder_indices(bvh_t &bvh, std::vector<uint32_t> &reordered_indices,
+                     uint32_t node_index) {
+  node_t &node = bvh.nodes[node_index];
+  if (node.is_leaf()) {
+    uint32_t start_index = reordered_indices.size();
+    for (uint32_t i = 0; i < node.prim_count; i++) {
+      reordered_indices.push_back(bvh.prim_indices[node.index + i]);
+    }
+    node.index = start_index;
+    return;
+  }
+  reorder_indices(bvh, reordered_indices, node.index + 0);
+  reorder_indices(bvh, reordered_indices, node.index + 1);
+}
+
+void fix_primitive_indices(bvh_t &bvh) {
+  std::vector<uint32_t> reordered_indices;
+  reordered_indices.reserve(bvh.prim_indices.size());
+  reorder_indices(bvh, reordered_indices, 0);
+  bvh.prim_indices = reordered_indices;
+}
+
+bvh_t build_bvh_binned_sah(const std::vector<math::aabb_t> &aabbs,
+                           uint32_t num_samples, uint32_t min_primitives,
+                           uint32_t max_primitives) {
+  bvh_t bvh{};
+
+  std::vector<math::vec3> centers;
+  for (const auto &aabb : aabbs) centers.push_back(aabb.center());
+
+  uint32_t primitive_count = aabbs.size();
+
+  for (uint32_t i = 0; i < primitive_count; i++) bvh.prim_indices.push_back(i);
+
+  node_t root;
+  root.index      = 0;
+  root.prim_count = primitive_count;
+  bvh.nodes.push_back(root);
+
+  update_node_bounds(bvh, 0, aabbs.data());
+  try_split_node(bvh, 0, aabbs.data(), centers.data(), num_samples,
+                 min_primitives, max_primitives);
+
+  std::set<uint32_t> deadnodes;
+  collapse_nodes(bvh, 0, deadnodes);
+  remove_deadnodes(bvh, deadnodes);
+
+  return bvh;
+}
+
+bvh_t build_bvh_ploc(const std::vector<math::aabb_t> &aabbs, uint32_t grid_dim,
+                     uint32_t log_bits, uint32_t search_radius) {
+  bvh_t bvh{};
+
+  std::vector<math::vec3> centers;
+  for (const auto &aabb : aabbs) centers.push_back(aabb.center());
+
+  uint32_t primitive_count = aabbs.size();
+
+  for (uint32_t i = 0; i < primitive_count; i++) {
+    bvh.prim_indices.push_back(i);
+  }
+
+  math::aabb_t center_aabb{};
+  for (uint32_t i = 0; i < centers.size(); i++) {
+    center_aabb.grow(centers[i]);
+  }
+
+  std::vector<uint32_t> morton_codes(aabbs.size());
+  for (uint32_t i = 0; i < aabbs.size(); i++) {
+    math::vec3 grid_position = math::min(
+        math::vec3{float(grid_dim - 1)},
+        math::max(math::vec3{0},
+                  (centers[i] - center_aabb.min) *
+                      (math::vec3{float(grid_dim)} /
+                       math::vec3{center_aabb.max - center_aabb.min})));
+    morton_codes[i] = encode_morton(grid_position.x, grid_position.y,
+                                    grid_position.z, log_bits);
+  }
+
+  std::sort(bvh.prim_indices.begin(), bvh.prim_indices.end(),
+            [&](uint32_t a, uint32_t b) {
+              return morton_codes[a] < morton_codes[b];
+            });
+
+  std::vector<node_t>   current_nodes(primitive_count), next_nodes;
+  std::vector<uint32_t> merge_index(primitive_count);
+
+  for (uint32_t i = 0; i < primitive_count; i++) {
+    current_nodes[i].prim_count = 1;
+    current_nodes[i].index      = i;
+    current_nodes[i].min        = aabbs[bvh.prim_indices[i]].min;
+    current_nodes[i].max        = aabbs[bvh.prim_indices[i]].max;
+  }
+
+  bvh.nodes                = std::vector<node_t>(2 * bvh.triangles.size() - 1);
+  uint32_t insertion_index = bvh.nodes.size();
+
+  while (current_nodes.size() > 1) {
+    for (uint32_t i = 0; i < current_nodes.size(); i++)
+      merge_index[i] = find_best_node(current_nodes, i, search_radius);
+    next_nodes.clear();
+    for (size_t i = 0; i < current_nodes.size(); i++) {
+      uint32_t j = merge_index[i];
+      if (i == merge_index[j]) {
+        if (i > j) continue;
+        assert(insertion_index >= 2);
+        insertion_index -= 2;
+        bvh.nodes[insertion_index + 0] = current_nodes[i];
+        bvh.nodes[insertion_index + 1] = current_nodes[j];
+        math::aabb_t combined_aabb =
+            current_nodes[i].aabb().grow(current_nodes[j].aabb());
+        node_t parent;
+        parent.prim_count = 0;
+        parent.index      = insertion_index;
+        parent.min        = combined_aabb.min;
+        parent.max        = combined_aabb.max;
+        next_nodes.push_back(parent);
+      } else {
+        next_nodes.push_back(current_nodes[i]);
+      }
+    }
+    std::swap(next_nodes, current_nodes);
+  }
+  assert(insertion_index == 1);
+
+  bvh.nodes[0] = current_nodes[0];
+
+  fix_primitive_indices(bvh);
+
+  std::set<uint32_t> deadnodes;
+  collapse_nodes(bvh, 0, deadnodes);
+
+  remove_deadnodes(bvh, deadnodes);
+
+  return bvh;
+}
+
+bvh_t build_bvh(const model::raw_mesh_t &mesh) {
+  bvh_t bvh{};
+
+  std::vector<bvh_triangle_t> triangles = triangles_from_mesh(mesh);
+
+  auto [aabbs, tri_indices] = presplit(triangles);
+
+  bvh           = build_bvh_binned_sah(aabbs);
+  bvh.triangles = triangles;
+
+  presplit_remove_indirection(bvh, tri_indices);
+  presplit_remove_duplicates(bvh);
 
   return bvh;
 }
