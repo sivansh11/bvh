@@ -312,6 +312,7 @@ int main(int argc, char **argv) {
 
   std::cout << "depth of bvh: " << bvh::depth_of_bvh(bvh) << '\n';
   std::cout << "cost of bvh: " << bvh::cost_of_bvh(bvh) << '\n';
+  std::cout << "num nodes: " << bvh.nodes.size() << '\n';
 
   image_t  image{640, 420};
   camera_t camera{90.f, {0, 1, 2}, {0, 1, 0}};
