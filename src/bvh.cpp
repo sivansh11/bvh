@@ -8,6 +8,7 @@
 #include <iostream>
 #include <iterator>
 #include <limits>
+#include <set>
 #include <stdexcept>
 #include <vector>
 
@@ -402,6 +403,30 @@ bvh_t build_bvh(const model::raw_mesh_t &mesh) {
       bvh.prim_indices[node.index + i] = tri_index;
     }
   }
+
+  std::vector<uint32_t> prim_indices{};
+  uint32_t              stack[64], stack_top = 0;
+  stack[stack_top++] = 0;
+
+  while (stack_top) {
+    node_t &node = bvh.nodes[stack[--stack_top]];
+    if (node.is_leaf()) {
+      std::set<uint32_t> node_prim_indices;
+      for (uint32_t i = 0; i < node.prim_count; i++) {
+        uint32_t index = bvh.prim_indices[node.index + i];
+        node_prim_indices.emplace(index);
+      }
+      node.index = prim_indices.size();
+      for (auto index : node_prim_indices) {
+        prim_indices.push_back(index);
+      }
+      node.prim_count = node_prim_indices.size();
+    } else {
+      stack[stack_top++] = node.index + 1;
+      stack[stack_top++] = node.index + 0;
+    }
+  }
+  bvh.prim_indices = prim_indices;
 
   return bvh;
 }
