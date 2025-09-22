@@ -590,7 +590,7 @@ bvh_t build_bvh_ploc(const std::vector<math::aabb_t> &aabbs, uint32_t grid_dim,
     current_nodes[i].max        = aabbs[bvh.prim_indices[i]].max;
   }
 
-  bvh.nodes                = std::vector<node_t>(2 * bvh.triangles.size() - 1);
+  bvh.nodes                = std::vector<node_t>(2 * aabbs.size() - 1);
   uint32_t insertion_index = bvh.nodes.size();
 
   while (current_nodes.size() > 1) {
