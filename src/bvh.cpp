@@ -781,6 +781,7 @@ void reinsert_node(bvh_t &bvh, uint32_t from, uint32_t to,
   node_t   dst_node      = bvh.nodes[to];
 
   bvh.nodes[to].index      = get_left_sibling_index(from);
+  bvh.nodes[to].prim_count = 0;
   bvh.nodes[sibling_index] = dst_node;
   bvh.nodes[parent_index]  = sibling_node;
 
