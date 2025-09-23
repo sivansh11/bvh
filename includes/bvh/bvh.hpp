@@ -38,6 +38,12 @@ struct bvh_t {
   std::vector<bvh_triangle_t> triangles;
 };
 
+struct blas_instance_t {
+  math::mat4   inv_transform;
+  math::aabb_t aabb;
+  uint32_t     index;
+};
+
 std::vector<bvh_triangle_t> triangles_from_mesh(const model::raw_mesh_t &mesh);
 std::vector<math::aabb_t>   aabbs_from_triangles(
       const std::vector<bvh_triangle_t> &triangles);
@@ -54,6 +60,8 @@ bvh_t build_bvh_ploc(const std::vector<math::aabb_t> &aabbs,
                      uint32_t grid_dim = 1024, uint32_t log_bits = 10,
                      uint32_t search_radius = 15);
 // create bvh with default parameters
+void  reinsertion_optimize(bvh_t &bvh, float batch_size_ratio = 0.05,
+                           uint32_t max_itr = 3);
 bvh_t build_bvh(const model::raw_mesh_t &mesh);
 
 uint32_t depth_of_bvh(const bvh_t &bvh);

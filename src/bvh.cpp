@@ -655,6 +655,189 @@ bvh_t build_bvh_ploc(const std::vector<math::aabb_t> &aabbs, uint32_t grid_dim,
   return bvh;
 }
 
+std::vector<uint32_t> get_parents(const bvh_t &bvh) {
+  std::vector<uint32_t> parents(bvh.nodes.size());
+  for (uint32_t i = 0; i < bvh.nodes.size(); i++) {
+    const node_t &node = bvh.nodes[i];
+    if (node.is_leaf()) continue;
+    parents[node.index + 0] = i;
+    parents[node.index + 1] = i;
+  }
+  return parents;
+}
+
+bool is_left_sibling(uint32_t index) { return index % 2 == 1; }
+
+uint32_t get_left_sibling_index(uint32_t index) {
+  return is_left_sibling(index) ? index : index - 1;
+}
+
+uint32_t sibling(uint32_t index) {
+  return is_left_sibling(index) ? index + 1 : index - 1;
+}
+
+struct candidate_t {
+  uint32_t index = 0;
+  float    cost  = -math::infinity;
+  bool operator>(const candidate_t &other) const { return cost > other.cost; }
+};
+
+struct reinsertion_t {
+  uint32_t from      = 0;
+  uint32_t to        = 0;
+  float    area_diff = 0;
+  bool     operator>(const reinsertion_t &other) const {
+    return area_diff > other.area_diff;
+  }
+};
+
+std::vector<candidate_t> find_candidates(bvh_t &bvh, uint32_t target_count) {
+  const uint32_t node_count =
+      std::min((uint32_t)bvh.nodes.size(), target_count + 1);
+  std::vector<candidate_t> candidates;
+  for (uint32_t i = 1; i < node_count; i++)
+    candidates.push_back(candidate_t{i, bvh.nodes[i].aabb().area()});
+  std::make_heap(candidates.begin(), candidates.end(), std::greater<>{});
+  for (uint32_t i = node_count; i < bvh.nodes.size(); i++) {
+    float cost = bvh.nodes[i].aabb().area();
+    if (candidates.front().cost < cost) {
+      std::pop_heap(candidates.begin(), candidates.end(), std::greater<>{});
+      candidates.back() = candidate_t{i, cost};
+      std::push_heap(candidates.begin(), candidates.end(), std::greater<>{});
+    }
+  }
+  return candidates;
+}
+
+reinsertion_t find_reinsertion(const bvh_t &bvh, uint32_t index,
+                               const std::vector<uint32_t> &parents) {
+  assert(index != 0);
+  reinsertion_t best_reinsertion{.from = index};
+  float         node_area     = bvh.nodes[index].aabb().area();
+  float         parent_area   = bvh.nodes[parents[index]].aabb().area();
+  float         area_diff     = parent_area;
+  uint32_t      sibling_index = sibling(index);
+  math::aabb_t  pivot_aabb    = bvh.nodes[sibling_index].aabb();
+  uint32_t      parent_index  = parents[index];
+  uint32_t      pivot_index   = parent_index;
+
+  std::vector<std::pair<float, uint32_t>> stack;
+  do {
+    stack.emplace_back(area_diff, sibling_index);
+    while (!stack.empty()) {
+      auto top = stack.back();
+      stack.pop_back();
+      if (top.first - node_area <= best_reinsertion.area_diff) continue;
+
+      const node_t &dst_node = bvh.nodes[top.second];
+      float merged_area = dst_node.aabb().grow(bvh.nodes[index].aabb()).area();
+      float reinsert_area = top.first - merged_area;
+      if (reinsert_area > best_reinsertion.area_diff) {
+        best_reinsertion.to        = top.second;
+        best_reinsertion.area_diff = reinsert_area;
+      }
+
+      if (!dst_node.is_leaf()) {
+        float child_area = reinsert_area + dst_node.aabb().area();
+        stack.emplace_back(child_area, dst_node.index + 0);
+        stack.emplace_back(child_area, dst_node.index + 1);
+      }
+    }
+
+    if (pivot_index != parent_index) {
+      pivot_aabb.grow(bvh.nodes[sibling_index].aabb());
+      area_diff += bvh.nodes[pivot_index].aabb().area() - pivot_aabb.area();
+    }
+
+    sibling_index = sibling(pivot_index);
+    pivot_index   = parents[pivot_index];
+  } while (pivot_index != 0);
+
+  if (best_reinsertion.to == sibling(best_reinsertion.from) ||
+      best_reinsertion.to == parents[best_reinsertion.from])
+    best_reinsertion = {};
+  return best_reinsertion;
+}
+
+void refit_from(bvh_t &bvh, uint32_t index,
+                const std::vector<uint32_t> &parents) {
+  do {
+    node_t &node = bvh.nodes[index];
+    if (!node.is_leaf()) {
+      math::aabb_t aabb = bvh.nodes[node.index + 0].aabb().grow(
+          bvh.nodes[node.index + 1].aabb());
+      node.min = aabb.min;
+      node.max = aabb.max;
+    }
+    index = parents[index];
+  } while (index != 0);
+}
+
+void reinsert_node(bvh_t &bvh, uint32_t from, uint32_t to,
+                   std::vector<uint32_t> &parents) {
+  uint32_t sibling_index = sibling(from);
+  uint32_t parent_index  = parents[from];
+  node_t   sibling_node  = bvh.nodes[sibling_index];
+  node_t   dst_node      = bvh.nodes[to];
+
+  bvh.nodes[to].index      = get_left_sibling_index(from);
+  bvh.nodes[sibling_index] = dst_node;
+  bvh.nodes[parent_index]  = sibling_node;
+
+  if (!dst_node.is_leaf()) {
+    parents[dst_node.index + 0] = sibling_index;
+    parents[dst_node.index + 1] = sibling_index;
+  }
+  if (!sibling_node.is_leaf()) {
+    parents[sibling_node.index + 0] = parent_index;
+    parents[sibling_node.index + 1] = parent_index;
+  }
+
+  parents[sibling_index] = to;
+  parents[from]          = to;
+  refit_from(bvh, to, parents);
+  refit_from(bvh, parent_index, parents);
+}
+
+std::array<uint32_t, 5> get_conflicts(uint32_t from, uint32_t to,
+                                      const std::vector<uint32_t> &parents) {
+  return {to, from, sibling(from), parents[to], parents[from]};
+}
+
+void reinsertion_optimize(bvh_t &bvh, float batch_size_ratio, uint32_t max_itr) {
+  std::vector<uint32_t> parents = get_parents(bvh);
+  uint32_t              batch_size =
+      std::max(uint32_t{1}, uint32_t(bvh.nodes.size() * batch_size_ratio));
+
+  std::vector<reinsertion_t> reinsertions;
+  std::vector<bool>          touched(bvh.nodes.size());
+
+  for (uint32_t itr = 0; itr < max_itr; itr++) {
+    std::vector<candidate_t> candidates = find_candidates(bvh, batch_size);
+
+    std::fill(touched.begin(), touched.end(), false);
+    reinsertions.resize(candidates.size());
+    for (uint32_t i = 0; i < candidates.size(); i++) {
+      reinsertions[i] = find_reinsertion(bvh, candidates[i].index, parents);
+    }
+
+    reinsertions.erase(
+        std::remove_if(reinsertions.begin(), reinsertions.end(),
+                       [](reinsertion_t &r) { return r.area_diff <= 0; }),
+        reinsertions.end());
+    std::sort(reinsertions.begin(), reinsertions.end(), std::greater<>{});
+
+    for (auto &reinsertion : reinsertions) {
+      auto conflicts = get_conflicts(reinsertion.from, reinsertion.to, parents);
+      if (std::any_of(conflicts.begin(), conflicts.end(),
+                      [&](uint32_t i) { return touched[i]; }))
+        continue;
+      for (auto conflict : conflicts) touched[conflict] = true;
+      reinsert_node(bvh, reinsertion.from, reinsertion.to, parents);
+    }
+  }
+}
+
 bvh_t build_bvh(const model::raw_mesh_t &mesh) {
   bvh_t bvh{};
 
