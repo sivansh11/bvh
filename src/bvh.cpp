@@ -805,7 +805,42 @@ std::array<uint32_t, 5> get_conflicts(uint32_t from, uint32_t to,
   return {to, from, sibling(from), parents[to], parents[from]};
 }
 
-void reinsertion_optimize(bvh_t &bvh, float batch_size_ratio, uint32_t max_itr) {
+void layout_optimize(bvh_t &bvh) {
+  std::vector<node_t>   nodes;
+  std::vector<uint32_t> new_to_old(bvh.nodes.size());
+  std::vector<uint32_t> old_to_new(bvh.nodes.size());
+  uint32_t              stack[64], stack_top = 0;
+  stack[stack_top++] = 0;
+  node_t root        = bvh.nodes[0];
+  nodes.push_back(root);
+  while (stack_top) {
+    node_t node = bvh.nodes[stack[--stack_top]];
+    if (!node.is_leaf()) {
+      node_t   left           = bvh.nodes[node.index + 0];
+      uint32_t new_left_index = nodes.size();
+      nodes.push_back(left);
+      node_t   right           = bvh.nodes[node.index + 1];
+      uint32_t new_right_index = nodes.size();
+      nodes.push_back(right);
+      old_to_new[node.index + 0] = new_left_index;
+      old_to_new[node.index + 1] = new_right_index;
+      stack[stack_top++]         = node.index + 1;
+      stack[stack_top++]         = node.index + 0;
+    }
+  }
+  for (uint32_t i = 0; i < bvh.nodes.size(); i++) {
+    node_t &node = nodes[i];
+    if (node.is_leaf()) continue;
+    uint32_t new_index = i;
+    uint32_t old_index = new_to_old[new_index];
+    node.index         = old_to_new[node.index];
+  }
+  bvh.nodes = nodes;
+}
+
+
+void reinsertion_optimize(bvh_t &bvh, float batch_size_ratio,
+                          uint32_t max_itr) {
   std::vector<uint32_t> parents = get_parents(bvh);
   uint32_t              batch_size =
       std::max(uint32_t{1}, uint32_t(bvh.nodes.size() * batch_size_ratio));
@@ -837,6 +872,7 @@ void reinsertion_optimize(bvh_t &bvh, float batch_size_ratio, uint32_t max_itr) 
       reinsert_node(bvh, reinsertion.from, reinsertion.to, parents);
     }
   }
+  layout_optimize(bvh);
 }
 
 bvh_t build_bvh(const model::raw_mesh_t &mesh) {
