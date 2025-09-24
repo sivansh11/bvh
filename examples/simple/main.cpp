@@ -200,11 +200,12 @@ aabb_hit_t intersect_aabb(const math::vec3 _min, const math::vec3 _max,
   return hit;
 }
 
-static const uint32_t stack_size = 16;
-uint32_t              stack[stack_size];
+hit_t intersect_bvh(bvh::node_t *nodes, uint32_t node_count, uint32_t *indices,
+                    uint32_t index_count, bvh::bvh_triangle_t *triangles,
+                    uint32_t triangle_count, ray_t ray) {
+  static const uint32_t stack_size = 16;
+  uint32_t              stack[stack_size];
 
-hit_t intersect_bvh(bvh::node_t *nodes, uint32_t *indices,
-                    bvh::bvh_triangle_t *triangles, ray_t ray) {
   hit_t hit = hit_t();
 
   uint32_t stack_top = 0;
