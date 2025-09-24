@@ -7,6 +7,7 @@
 
 #include "math/aabb.hpp"
 #include "math/math.hpp"
+#include "math/triangle.hpp"
 #include "model/model.hpp"
 
 namespace bvh {
@@ -45,9 +46,10 @@ bvh_t build_bvh_ploc(const std::vector<math::aabb_t> &aabbs,
                      uint32_t grid_dim = 1024, uint32_t log_bits = 10,
                      uint32_t search_radius = 15);
 // create bvh with default parameters
-void  reinsertion_optimize(bvh_t &bvh, float batch_size_ratio = 0.05,
-                           uint32_t max_itr = 3);
-bvh_t build_bvh(const model::raw_mesh_t &mesh);
+void reinsertion_optimize(bvh_t &bvh, float batch_size_ratio = 0.05,
+                          uint32_t max_itr = 3);
+std::pair<bvh_t, std::vector<math::triangle_t>> build_bvh(
+    const model::raw_mesh_t &mesh);
 
 uint32_t depth_of_bvh(const bvh_t &bvh);
 float    cost_of_bvh(const bvh_t &bvh);

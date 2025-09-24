@@ -39,11 +39,15 @@ void update_node_bounds(bvh_t &bvh, uint32_t node_index,
 float cost_of_node(const bvh_t &bvh, uint32_t node_index) {
   const node_t &node = bvh.nodes[node_index];
   if (node.is_leaf()) return 1.1f * node.prim_count;
-  const node_t &left  = bvh.nodes[node.index + 0];
-  const node_t &right = bvh.nodes[node.index + 1];
-  float         cost  = left.aabb().area() * cost_of_node(bvh, node.index + 0) +
-               right.aabb().area() * cost_of_node(bvh, node.index + 1);
-  return 1.f + (cost / node.aabb().area());
+  const node_t &left        = bvh.nodes[node.index + 0];
+  const node_t &right       = bvh.nodes[node.index + 1];
+  float         left_cost   = cost_of_node(bvh, node.index + 0);
+  float         right_cost  = cost_of_node(bvh, node.index + 1);
+  float         left_area   = left.aabb().area();
+  float         right_area  = left.aabb().area();
+  float         parent_area = node.aabb().area();
+  return 1.f + (left_area / parent_area) * left_cost +
+         (right_area / parent_area) * right_cost;
 }
 
 uint32_t depth_of_node(const bvh_t &bvh, uint32_t node_id) {
@@ -216,7 +220,6 @@ void try_split_node(bvh_t &bvh, uint32_t node_index, const math::aabb_t *aabbs,
   }
 }
 
-// TODO: clean dead nodes
 void collapse_nodes(bvh_t &bvh, uint32_t node_index,
                     std::set<uint32_t> &deadnodes) {
   node_t &node = bvh.nodes[node_index];
@@ -791,7 +794,8 @@ void reinsertion_optimize(bvh_t &bvh, float batch_size_ratio,
   layout_optimize(bvh);
 }
 
-bvh_t build_bvh(const model::raw_mesh_t &mesh) {
+std::pair<bvh_t, std::vector<math::triangle_t>> build_bvh(
+    const model::raw_mesh_t &mesh) {
   bvh_t bvh{};
 
   std::vector<math::triangle_t> triangles =
@@ -804,7 +808,7 @@ bvh_t build_bvh(const model::raw_mesh_t &mesh) {
   presplit_remove_indirection(bvh, tri_indices);
   presplit_remove_duplicates(bvh);
 
-  return bvh;
+  return {bvh, triangles};
 }
 
 struct binary_reader_t {
