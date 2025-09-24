@@ -44,7 +44,7 @@ float cost_of_node(const bvh_t &bvh, uint32_t node_index) {
   float         left_cost   = cost_of_node(bvh, node.index + 0);
   float         right_cost  = cost_of_node(bvh, node.index + 1);
   float         left_area   = left.aabb().area();
-  float         right_area  = left.aabb().area();
+  float         right_area  = right.aabb().area();
   float         parent_area = node.aabb().area();
   return 1.f + (left_area / parent_area) * left_cost +
          (right_area / parent_area) * right_cost;
