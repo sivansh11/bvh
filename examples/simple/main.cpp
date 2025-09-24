@@ -329,7 +329,7 @@ int main(int argc, char **argv) {
         image.at(x, image._height - y - 1) =
             math::vec4{random_color_from_hit(hit.prim_index), 1};
       } else {
-        image.at(x, y) = math::vec4{0, 0, 0, 0};
+        image.at(x, image._height - y - 1) = math::vec4{0, 0, 0, 0};
       }
     }
 
