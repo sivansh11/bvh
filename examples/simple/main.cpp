@@ -1,3 +1,4 @@
+#include <cassert>
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
@@ -8,6 +9,7 @@
 #include "bvh/bvh.hpp"
 #include "glm/common.hpp"
 #include "math/triangle.hpp"
+#include "math/utilies.hpp"
 #include "model/model.hpp"
 
 float safe_inverse(float x) {
@@ -154,8 +156,8 @@ struct ray_t {
   float      tmax, tmin;
 };
 
-triangle_hit_t intersect_triangle(const bvh::bvh_triangle_t triangle,
-                                  const ray_t               ray) {
+triangle_hit_t intersect_triangle(const math::triangle_t triangle,
+                                  const ray_t            ray) {
   const math::vec3 e1 = math::vec3{triangle.v0} - math::vec3{triangle.v1};
   const math::vec3 e2 = math::vec3{triangle.v2} - math::vec3{triangle.v0};
   const math::vec3 n  = cross(e1, e2);
@@ -201,7 +203,7 @@ aabb_hit_t intersect_aabb(const math::vec3 _min, const math::vec3 _max,
 }
 
 hit_t intersect_bvh(bvh::node_t *nodes, uint32_t node_count, uint32_t *indices,
-                    uint32_t index_count, bvh::bvh_triangle_t *triangles,
+                    uint32_t index_count, math::triangle_t *triangles,
                     uint32_t triangle_count, ray_t ray) {
   static const uint32_t stack_size = 16;
   uint32_t              stack[stack_size];
@@ -215,9 +217,11 @@ hit_t intersect_bvh(bvh::node_t *nodes, uint32_t node_count, uint32_t *indices,
 
   if (root.is_leaf()) {
     for (uint32_t i = 0; i < root.prim_count; i++) {
-      const uint32_t            triangle_index = indices[root.index + i];
-      const bvh::bvh_triangle_t triangle       = triangles[triangle_index];
-      triangle_hit_t triangle_hit = intersect_triangle(triangle, ray);
+      assert(root.index + i < index_count);
+      const uint32_t triangle_index = indices[root.index + i];
+      assert(triangle_index < triangle_count);
+      const math::triangle_t triangle     = triangles[triangle_index];
+      triangle_hit_t         triangle_hit = intersect_triangle(triangle, ray);
       if (triangle_hit.did_intersect()) {
         ray.tmax       = triangle_hit.t;
         hit.prim_index = triangle_index;
@@ -232,6 +236,7 @@ hit_t intersect_bvh(bvh::node_t *nodes, uint32_t node_count, uint32_t *indices,
   uint32_t current = root.index;
 
   while (true) {
+    assert(current + 1 < node_count);
     bvh::node_t left  = nodes[current + 0];
     bvh::node_t right = nodes[current + 1];
 
@@ -255,9 +260,11 @@ hit_t intersect_bvh(bvh::node_t *nodes, uint32_t node_count, uint32_t *indices,
       }
     }
     for (uint32_t index = start; index < end; index++) {
-      uint32_t                  triangle_index = indices[index];
-      const bvh::bvh_triangle_t triangle       = triangles[triangle_index];
-      triangle_hit_t triangle_hit = intersect_triangle(triangle, ray);
+      assert(index < index_count);
+      uint32_t triangle_index = indices[index];
+      assert(triangle_index < triangle_count);
+      const math::triangle_t triangle     = triangles[triangle_index];
+      triangle_hit_t         triangle_hit = intersect_triangle(triangle, ray);
       if (triangle_hit.did_intersect()) {
         ray.tmax       = triangle_hit.t;
         hit.prim_index = triangle_index;
@@ -302,9 +309,14 @@ int main(int argc, char **argv) {
   model                    = model::merge_meshes(model);
   model::raw_mesh_t &mesh  = model.meshes[0];
 
-  auto       start = std::chrono::high_resolution_clock::now();
-  bvh::bvh_t bvh   = bvh::build_bvh(mesh);
-  auto       end   = std::chrono::high_resolution_clock::now();
+  auto start     = std::chrono::high_resolution_clock::now();
+  auto triangles = model::create_triangles_from_mesh(mesh);
+  // auto       aabbs     = math::aabbs_from_triangles(triangles);
+  auto [aabbs, tri_indics] = bvh::presplit(triangles);
+  bvh::bvh_t bvh           = bvh::build_bvh_binned_sah(aabbs);
+  bvh::presplit_remove_indirection(bvh, tri_indics);
+  bvh::presplit_remove_duplicates(bvh);
+  auto end = std::chrono::high_resolution_clock::now();
   std::cout << "builder took: "
             << std::chrono::duration_cast<std::chrono::milliseconds>(end -
                                                                      start)
@@ -323,8 +335,9 @@ int main(int argc, char **argv) {
     for (uint32_t x = 0; x < image._width; x++) {
       auto [O, D] = camera.ray_gen(x, y);
       ray_t ray   = ray_t::create(O, D);
-      auto  hit   = intersect_bvh(bvh.nodes.data(), bvh.prim_indices.data(),
-                                  bvh.triangles.data(), ray);
+      auto  hit   = intersect_bvh(bvh.nodes.data(), bvh.nodes.size(),
+                                  bvh.prim_indices.data(), bvh.prim_indices.size(),
+                                  triangles.data(), triangles.size(), ray);
       if (hit.did_intersect()) {
         image.at(x, image._height - y - 1) =
             math::vec4{random_color_from_hit(hit.prim_index), 1};
