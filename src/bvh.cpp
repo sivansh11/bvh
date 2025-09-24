@@ -22,67 +22,6 @@
 
 namespace bvh {
 
-math::aabb_t bvh_triangle_t::aabb() const {
-  return math::aabb_t{}.grow(v0).grow(v1).grow(v2);
-}
-math::vec3 bvh_triangle_t::center() const {
-  math::vec3 _v0 = v0;
-  math::vec3 _v1 = v1;
-  math::vec3 _v2 = v2;
-  return (_v0 + _v1 + _v2) / 3.f;
-}
-float bvh_triangle_t::area() const {
-  math::vec3 e1 = v1 - v0;
-  math::vec3 e2 = v2 - v0;
-  return math::length(math::cross(e1, e2)) * 0.5f;
-}
-
-math::vec3 split_edge(const math::vec3 a, const math::vec3 b, uint32_t axis,
-                      float position) {
-  float t = (position - a[axis]) / (b[axis] - a[axis]);
-  return a + t * (b - a);
-}
-
-std::pair<math::aabb_t, math::aabb_t> bvh_triangle_t::split(
-    uint32_t axis, float position) const {
-  math::aabb_t l_aabb{}, r_aabb{};
-
-  bool q0 = v0[axis] <= position;
-  bool q1 = v1[axis] <= position;
-  bool q2 = v2[axis] <= position;
-
-  if (q0)
-    l_aabb.grow(v0);
-  else
-    r_aabb.grow(v0);
-  if (q1)
-    l_aabb.grow(v1);
-  else
-    r_aabb.grow(v1);
-  if (q2)
-    l_aabb.grow(v2);
-  else
-    r_aabb.grow(v2);
-
-  if (q0 ^ q1) {
-    math::vec3 m = split_edge(v0, v1, axis, position);
-    l_aabb.grow(m);
-    r_aabb.grow(m);
-  }
-  if (q1 ^ q2) {
-    math::vec3 m = split_edge(v1, v2, axis, position);
-    l_aabb.grow(m);
-    r_aabb.grow(m);
-  }
-  if (q2 ^ q0) {
-    math::vec3 m = split_edge(v2, v0, axis, position);
-    l_aabb.grow(m);
-    r_aabb.grow(m);
-  }
-
-  return {l_aabb, r_aabb};
-}
-
 void update_node_bounds(bvh_t &bvh, uint32_t node_index,
                         const math::aabb_t *aabbs) {
   node_t &node = bvh.nodes[node_index];
@@ -323,20 +262,20 @@ void remove_deadnodes(bvh_t &bvh, const std::set<uint32_t> &deadnodes) {
   bvh.nodes = nodes;
 }
 
-float priority(const bvh_triangle_t triangle) {
+float priority(const math::triangle_t triangle) {
   const math::aabb_t aabb = triangle.aabb();
   return std::cbrt(std::pow(aabb.largest_extent(), 2.f) *
                    (aabb.area() - triangle.area()));
 }
 
-uint32_t num_splits(float total_priority, const bvh_triangle_t triangle,
+uint32_t num_splits(float total_priority, const math::triangle_t triangle,
                     uint32_t triangle_count, float split_factor) {
   return 1 + (uint32_t)(priority(triangle) *
                         (triangle_count * split_factor / total_priority));
 }
 
 std::pair<std::vector<math::aabb_t>, std::vector<uint32_t>> presplit(
-    const std::vector<bvh_triangle_t> &triangles, float split_factor) {
+    const std::vector<math::triangle_t> &triangles, float split_factor) {
   math::aabb_t global_aabb{};
   for (const auto &triangle : triangles) global_aabb.grow(triangle.aabb());
   math::vec3 global_extent = global_aabb.extent();
@@ -361,7 +300,7 @@ std::pair<std::vector<math::aabb_t>, std::vector<uint32_t>> presplit(
   uint32_t split_index = 0;
 
   for (uint32_t i = 0; i < triangles.size(); i++) {
-    const bvh_triangle_t &triangle = triangles[i];
+    const math::triangle_t &triangle = triangles[i];
 
     uint32_t split_count =
         num_splits(total_priority, triangle, triangles.size(), split_factor);
@@ -457,28 +396,6 @@ void presplit_remove_duplicates(bvh_t &bvh) {
     }
   }
   bvh.prim_indices = prim_indices;
-}
-
-std::vector<bvh_triangle_t> triangles_from_mesh(const model::raw_mesh_t &mesh) {
-  std::vector<bvh_triangle_t> triangles;
-  for (uint32_t i = 0; i < mesh.indices.size(); i += 3) {
-    bvh_triangle_t bvh_triangle{
-        {mesh.vertices[mesh.indices[i + 0]].position, 0},
-        {mesh.vertices[mesh.indices[i + 1]].position, 0},
-        {mesh.vertices[mesh.indices[i + 2]].position, 0},
-    };
-    triangles.push_back(bvh_triangle);
-  }
-  return triangles;
-}
-
-std::vector<math::aabb_t> aabbs_from_triangles(
-    const std::vector<bvh_triangle_t> &triangles) {
-  std::vector<math::aabb_t> aabbs;
-  for (auto &triangle : triangles) {
-    aabbs.push_back(triangle.aabb());
-  }
-  return aabbs;
 }
 
 uint64_t split_morton(uint64_t x, int log_bits) {
@@ -838,7 +755,6 @@ void layout_optimize(bvh_t &bvh) {
   bvh.nodes = nodes;
 }
 
-
 void reinsertion_optimize(bvh_t &bvh, float batch_size_ratio,
                           uint32_t max_itr) {
   std::vector<uint32_t> parents = get_parents(bvh);
@@ -878,12 +794,12 @@ void reinsertion_optimize(bvh_t &bvh, float batch_size_ratio,
 bvh_t build_bvh(const model::raw_mesh_t &mesh) {
   bvh_t bvh{};
 
-  std::vector<bvh_triangle_t> triangles = triangles_from_mesh(mesh);
+  std::vector<math::triangle_t> triangles =
+      model::create_triangles_from_mesh(mesh);
 
   auto [aabbs, tri_indices] = presplit(triangles);
 
-  bvh           = build_bvh_binned_sah(aabbs);
-  bvh.triangles = triangles;
+  bvh = build_bvh_binned_sah(aabbs);
 
   presplit_remove_indirection(bvh, tri_indices);
   presplit_remove_duplicates(bvh);
@@ -958,10 +874,6 @@ void save(const bvh_t &bvh, const std::filesystem::path &path) {
   for (auto &index : bvh.prim_indices) {
     writer.write(index);
   }
-  writer.write((uint32_t)bvh.triangles.size());
-  for (auto &triangle : bvh.triangles) {
-    writer.write(triangle);
-  }
 }
 
 bvh_t load(const std::filesystem::path &path) {
@@ -977,11 +889,6 @@ bvh_t load(const std::filesystem::path &path) {
   bvh.prim_indices.resize(size);
   for (auto &index : bvh.prim_indices) {
     reader.read(index);
-  }
-  reader.read(size);
-  bvh.triangles.resize(size);
-  for (auto &triangle : bvh.triangles) {
-    reader.read(triangle);
   }
   return bvh;
 }

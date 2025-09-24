@@ -21,21 +21,9 @@ struct node_t {
 };
 static_assert(sizeof(node_t) == 32, "sizeof(node_t) should be 32 bytes");
 
-struct bvh_triangle_t {
-  math::vec4                            v0;
-  math::vec4                            v1;
-  math::vec4                            v2;
-  math::aabb_t                          aabb() const;
-  math::vec3                            center() const;
-  float                                 area() const;
-  std::pair<math::aabb_t, math::aabb_t> split(uint32_t axis,
-                                              float    position) const;
-};
-
 struct bvh_t {
-  std::vector<node_t>         nodes;
-  std::vector<uint32_t>       prim_indices;
-  std::vector<bvh_triangle_t> triangles;
+  std::vector<node_t>   nodes;
+  std::vector<uint32_t> prim_indices;
 };
 
 struct blas_instance_t {
@@ -44,14 +32,11 @@ struct blas_instance_t {
   uint32_t     index;
 };
 
-std::vector<bvh_triangle_t> triangles_from_mesh(const model::raw_mesh_t &mesh);
-std::vector<math::aabb_t>   aabbs_from_triangles(
-      const std::vector<bvh_triangle_t> &triangles);
 void presplit_remove_indirection(bvh_t                       &bvh,
                                  const std::vector<uint32_t> &tri_indices);
 void presplit_remove_duplicates(bvh_t &bvh);
 std::pair<std::vector<math::aabb_t>, std::vector<uint32_t>> presplit(
-    const std::vector<bvh_triangle_t> &triangles, float split_factor = 0.3f);
+    const std::vector<math::triangle_t> &triangles, float split_factor = 0.3f);
 bvh_t build_bvh_binned_sah(const std::vector<math::aabb_t> &aabbs,
                            uint32_t                         num_samples    = 8,
                            uint32_t                         min_primitives = 1,
