@@ -36,13 +36,13 @@ void update_node_bounds(bvh_t &bvh, uint32_t node_index,
   }
 }
 
-float cost_of_node(const bvh_t &bvh, uint32_t node_index) {
+float sah_of_node(const bvh_t &bvh, uint32_t node_index) {
   const node_t &node = bvh.nodes[node_index];
   if (node.is_leaf()) return 1.1f * node.prim_count;
   const node_t &left        = bvh.nodes[node.index + 0];
   const node_t &right       = bvh.nodes[node.index + 1];
-  float         left_cost   = cost_of_node(bvh, node.index + 0);
-  float         right_cost  = cost_of_node(bvh, node.index + 1);
+  float         left_cost   = sah_of_node(bvh, node.index + 0);
+  float         right_cost  = sah_of_node(bvh, node.index + 1);
   float         left_area   = left.aabb().area();
   float         right_area  = right.aabb().area();
   float         parent_area = node.aabb().area();
@@ -60,9 +60,9 @@ uint32_t depth_of_node(const bvh_t &bvh, uint32_t node_id) {
 
 uint32_t depth_of_bvh(const bvh_t &bvh) { return depth_of_node(bvh, 0); }
 
-float cost_of_bvh(const bvh_t &bvh) { return cost_of_node(bvh, 0); }
+float sah_of_bvh(const bvh_t &bvh) { return sah_of_node(bvh, 0); }
 
-float greedy_cost_of_node(uint32_t left_count, uint32_t right_count,
+float greedy_sah_of_node(uint32_t left_count, uint32_t right_count,
                           float left_aabb_area, float right_aabb_area,
                           float parent_aabb_area) {
   return 1.f + ((left_aabb_area * 1.1f * left_count +
@@ -130,7 +130,7 @@ split_t find_best_object_split(bvh_t &bvh, uint32_t node_index,
             static_cast<float>(num_samples);
     for (uint32_t i = 0; i < num_samples - 1; i++) {
       float cost =
-          greedy_cost_of_node(left_count[i], right_count[i], left_area[i],
+          greedy_sah_of_node(left_count[i], right_count[i], left_area[i],
                               right_area[i], node.aabb().area());
       if (cost < best_split.cost) {
         best_split.cost     = cost;
@@ -210,7 +210,7 @@ void try_split_node(bvh_t &bvh, uint32_t node_index, const math::aabb_t *aabbs,
     split_node(bvh, node_index, split, aabbs, centers, num_samples,
                min_primitives, max_primitives);
   } else {
-    float   no_split_cost = cost_of_node(bvh, node_index);
+    float   no_split_cost = sah_of_node(bvh, node_index);
     split_t split =
         find_best_object_split(bvh, node_index, aabbs, centers, num_samples);
     if (split.cost < no_split_cost) {
@@ -231,7 +231,7 @@ void collapse_nodes(bvh_t &bvh, uint32_t node_index,
   node_t  &left        = bvh.nodes[left_index];
   node_t  &right       = bvh.nodes[right_index];
   if (left.is_leaf() && right.is_leaf()) {
-    float real_cost    = cost_of_node(bvh, node_index);
+    float real_cost    = sah_of_node(bvh, node_index);
     float cost_if_leaf = 1.1f * (left.prim_count + right.prim_count);
     if (cost_if_leaf <= real_cost) {
       assert(right.index == left.index + left.prim_count);

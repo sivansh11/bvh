@@ -324,7 +324,7 @@ int main(int argc, char **argv) {
             << "ms\n";
 
   std::cout << "depth of bvh: " << bvh::depth_of_bvh(bvh) << '\n';
-  std::cout << "cost of bvh: " << bvh::cost_of_bvh(bvh) << '\n';
+  std::cout << "cost of bvh: " << bvh::sah_of_bvh(bvh) << '\n';
   std::cout << "num nodes: " << bvh.nodes.size() << '\n';
 
   image_t  image{640, 420};

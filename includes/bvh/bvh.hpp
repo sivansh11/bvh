@@ -52,7 +52,7 @@ std::pair<bvh_t, std::vector<math::triangle_t>> build_bvh(
     const model::raw_mesh_t &mesh);
 
 uint32_t depth_of_bvh(const bvh_t &bvh);
-float    cost_of_bvh(const bvh_t &bvh);
+float    sah_of_bvh(const bvh_t &bvh);
 
 void  save(const bvh_t &bvh, const std::filesystem::path &path);
 bvh_t load(const std::filesystem::path &path);
