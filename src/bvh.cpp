@@ -60,7 +60,17 @@ uint32_t depth_of_node(const bvh_t &bvh, uint32_t node_id) {
 
 uint32_t depth_of_bvh(const bvh_t &bvh) { return depth_of_node(bvh, 0); }
 
-float sah_of_bvh(const bvh_t &bvh) { return sah_of_node(bvh, 0); }
+float sah_of_bvh(const bvh_t &bvh) {
+  float cost = 0;
+  for (const auto &node : bvh.nodes) {
+    if (node.is_leaf()) {
+      cost += 1.1f * node.prim_count * node.aabb().area();
+    } else {
+      cost += 1.f * node.aabb().area();
+    }
+  }
+  return cost / bvh.nodes[0].aabb().area();
+}
 
 float greedy_sah_of_node(uint32_t left_count, uint32_t right_count,
                           float left_aabb_area, float right_aabb_area,
