@@ -12,6 +12,7 @@
 #include <set>
 #include <sstream>
 #include <stdexcept>
+#include <thread>
 #include <vector>
 
 #include "glm/common.hpp"
@@ -70,6 +71,181 @@ float sah_of_bvh(const bvh_t &bvh) {
     }
   }
   return cost / bvh.nodes[0].aabb().area();
+}
+
+math::vec3 intersect(math::vec3 p1, math::vec3 p2, math::vec3 plane_p,
+                     math::vec3 plane_n) {
+  math::vec3 line_dir = p2 - p1;
+  float      dot_line_normal =
+      plane_n.x * line_dir.x + plane_n.y * line_dir.y + plane_n.z * line_dir.z;
+  if (std::abs(dot_line_normal) < 1e-6) return p1;
+
+  math::vec3 w            = p1 - plane_p;
+  float      dot_w_normal = plane_n.x * w.x + plane_n.y * w.y + plane_n.z * w.z;
+  float      t            = -dot_w_normal / dot_line_normal;
+
+  return p1 + line_dir * t;
+}
+
+void clip_polygon_plane(std::vector<math::vec3> &polygon, math::vec3 plane_p,
+                        math::vec3 plane_n) {
+  std::vector<math::vec3> new_polygon;
+  if (polygon.empty()) return;
+
+  for (size_t i = 0; i < polygon.size(); ++i) {
+    math::vec3 p1 = polygon[i];
+    math::vec3 p2 = polygon[(i + 1) % polygon.size()];
+
+    float p1_pos = (p1.x - plane_p.x) * plane_n.x +
+                   (p1.y - plane_p.y) * plane_n.y +
+                   (p1.z - plane_p.z) * plane_n.z;
+    float p2_pos = (p2.x - plane_p.x) * plane_n.x +
+                   (p2.y - plane_p.y) * plane_n.y +
+                   (p2.z - plane_p.z) * plane_n.z;
+
+    if (p1_pos <= 0) {
+      if (p2_pos <= 0) {
+        new_polygon.push_back(p2);
+      } else {
+        new_polygon.push_back(intersect(p1, p2, plane_p, plane_n));
+      }
+    } else {
+      if (p2_pos <= 0) {
+        new_polygon.push_back(intersect(p1, p2, plane_p, plane_n));
+        new_polygon.push_back(p2);
+      }
+    }
+  }
+  polygon = new_polygon;
+}
+
+std::vector<math::vec3> clip_triangle(const math::triangle_t &triangle,
+                                      const math::aabb_t     &aabb) {
+  std::vector<math::vec3> polygon = {triangle.v0, triangle.v1, triangle.v2};
+
+  std::vector<std::pair<math::vec3, math::vec3>> planes = {
+      {aabb.min, {-1, 0, 0}}, {aabb.max, {1, 0, 0}},  {aabb.min, {0, -1, 0}},
+      {aabb.max, {0, 1, 0}},  {aabb.min, {0, 0, -1}}, {aabb.max, {0, 0, 1}}};
+
+  for (const auto &plane : planes) {
+    clip_polygon_plane(polygon, plane.first, plane.second);
+  }
+
+  return polygon;
+}
+
+float polygon_area(const std::vector<math::vec3> &polygon) {
+  if (polygon.size() < 3) return 0.0f;
+
+  math::vec3 total = {0, 0, 0};
+  for (size_t i = 0; i < polygon.size(); ++i) {
+    math::vec3 p1 = polygon[i];
+    math::vec3 p2 = polygon[(i + 1) % polygon.size()];
+    total.x += (p1.y - p2.y) * (p1.z + p2.z);
+    total.y += (p1.z - p2.z) * (p1.x + p2.x);
+    total.z += (p1.x - p2.x) * (p1.y + p2.y);
+  }
+
+  return 0.5f *
+         std::sqrt(total.x * total.x + total.y * total.y + total.z * total.z);
+}
+
+std::vector<uint32_t> get_primitives_intersecting_node(
+    const bvh_t &bvh, const math::aabb_t &aabb,
+    const std::vector<math::triangle_t> &triangles) {
+  uint32_t stack[64], stack_top = 0;
+  stack[stack_top++] = 0;
+  std::vector<uint32_t> intersections{};
+  while (stack_top) {
+    const node_t &node = bvh.nodes[stack[--stack_top]];
+    if (node.aabb().intersects(aabb)) {
+      if (node.is_leaf()) {
+        for (uint32_t i = 0; i < node.prim_count; i++) {
+          if (aabb.intersects(
+                  triangles[bvh.prim_indices[node.index + i]].aabb()))
+            intersections.push_back(bvh.prim_indices[node.index + i]);
+        }
+      } else {
+        stack[stack_top++] = node.index + 1;
+        stack[stack_top++] = node.index + 0;
+      }
+    }
+  }
+  return intersections;
+}
+
+std::set<uint32_t> get_primitives_in_node(const bvh_t &bvh,
+                                          uint32_t     node_index) {
+  std::set<uint32_t> indices;
+  uint32_t           stack[64], stack_top = 0;
+  stack[stack_top++] = node_index;
+  while (stack_top) {
+    const node_t &node = bvh.nodes[stack[--stack_top]];
+    if (node.is_leaf()) {
+      for (uint32_t i = 0; i < node.prim_count; i++) {
+        indices.emplace(bvh.prim_indices[node.index + i]);
+      }
+    } else {
+      stack[stack_top++] = node.index + 1;
+      stack[stack_top++] = node.index + 0;
+    }
+  }
+  return indices;
+}
+
+float epo_of_bvh(const bvh_t                         &bvh,
+                 const std::vector<math::triangle_t> &triangles) {
+  float total_triangle_area = 0;
+  for (const auto &tri : triangles) total_triangle_area += tri.area();
+
+  const uint32_t num_threads = 16;
+  float          epo_per_thread[num_threads];
+  for (auto &epo : epo_per_thread) epo = 0;
+
+  std::vector<std::thread> threads{};
+  for (uint32_t thread_index = 0; thread_index < num_threads; thread_index++) {
+    threads.emplace_back(
+        [&](uint32_t thread_index) {
+          float &epo = epo_per_thread[thread_index];
+          for (uint32_t current_node_index = thread_index + 1;
+               current_node_index < bvh.nodes.size();
+               current_node_index += num_threads) {
+            const node_t &current = bvh.nodes[current_node_index];
+            // TODO: optimise
+            std::vector<uint32_t> all_triangles_intersecting_node =
+                get_primitives_intersecting_node(bvh, current.aabb(),
+                                                 triangles);
+            std::set<uint32_t> all_triangles_in_node =
+                get_primitives_in_node(bvh, current_node_index);
+
+            std::set<uint32_t>
+                all_triangles_intersecting_node_but_not_in_node{};
+            for (auto index : all_triangles_intersecting_node)
+              if (!all_triangles_in_node.contains(index))
+                all_triangles_intersecting_node_but_not_in_node.emplace(index);
+
+            float overlap = 0;
+            for (auto tri_index :
+                 all_triangles_intersecting_node_but_not_in_node) {
+              overlap += polygon_area(
+                  clip_triangle(triangles[tri_index], current.aabb()));
+            }
+
+            if (current.is_leaf()) {
+              epo += 1.1f * current.prim_count * overlap / total_triangle_area;
+            } else {
+              epo += 1.f * overlap / total_triangle_area;
+            }
+          }
+        },
+        thread_index);
+  }
+  for (auto &thread : threads) thread.join();
+
+  float epo = 0;
+  for (uint32_t i = 0; i < num_threads; i++) epo += epo_per_thread[i];
+
+  return epo;
 }
 
 float greedy_sah_of_node(uint32_t left_count, uint32_t right_count,
