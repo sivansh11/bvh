@@ -249,8 +249,8 @@ float epo_of_bvh(const bvh_t                         &bvh,
 }
 
 float greedy_sah_of_node(uint32_t left_count, uint32_t right_count,
-                          float left_aabb_area, float right_aabb_area,
-                          float parent_aabb_area) {
+                         float left_aabb_area, float right_aabb_area,
+                         float parent_aabb_area) {
   return 1.f + ((left_aabb_area * 1.1f * left_count +
                  right_aabb_area * 1.1f * right_count) /
                 parent_aabb_area);
@@ -317,7 +317,7 @@ split_t find_best_object_split(bvh_t &bvh, uint32_t node_index,
     for (uint32_t i = 0; i < num_samples - 1; i++) {
       float cost =
           greedy_sah_of_node(left_count[i], right_count[i], left_area[i],
-                              right_area[i], node.aabb().area());
+                             right_area[i], node.aabb().area());
       if (cost < best_split.cost) {
         best_split.cost     = cost;
         best_split.axis     = axis;
