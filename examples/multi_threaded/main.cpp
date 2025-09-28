@@ -329,21 +329,25 @@ int main(int argc, char **argv) {
 
   auto start     = std::chrono::high_resolution_clock::now();
   auto triangles = model::create_triangles_from_mesh(mesh);
-  auto       aabbs     = math::aabbs_from_triangles(triangles);
-  // auto [aabbs, tri_indics] = bvh::presplit(triangles);
-  bvh::bvh_t bvh           = bvh::build_bvh_binned_sah(aabbs);
-  // bvh::presplit_remove_indirection(bvh, tri_indics);
-  // bvh::presplit_remove_duplicates(bvh);
-  bvh::reinsertion_optimize(bvh, 0.001, 5);
+  // auto aabbs     = math::aabbs_from_triangles(triangles);
+  auto [aabbs, tri_indics] = bvh::presplit(triangles);
+  bvh::bvh_t bvh           = bvh::build_bvh_binned_sah(aabbs, 64);
+  bvh::presplit_remove_indirection(bvh, tri_indics);
+  bvh::presplit_remove_duplicates(bvh);
+  // bvh::reinsertion_optimize(bvh, 0.001, 5);
   auto end = std::chrono::high_resolution_clock::now();
   std::cout << "builder took: "
             << std::chrono::duration_cast<std::chrono::milliseconds>(end -
                                                                      start)
                    .count()
             << "ms\n";
-
   std::cout << "depth of bvh: " << bvh::depth_of_bvh(bvh) << '\n';
-  std::cout << "cost of bvh: " << bvh::sah_of_bvh(bvh) << '\n';
+  float sah = bvh::sah_of_bvh(bvh);
+  float epo = bvh::epo_of_bvh(bvh, triangles);
+  std::cout << "sah of bvh: " << sah << '\n';
+  std::cout << "epo of bvh: " << epo << '\n';
+  float alpha = 0.71;
+  std::cout << "sah-epo: " << ((1.f - alpha) * sah + alpha * epo) << '\n';
   std::cout << "num nodes: " << bvh.nodes.size() << '\n';
 
   image_t  image{640, 420};
