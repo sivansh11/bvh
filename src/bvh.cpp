@@ -150,12 +150,12 @@ float polygon_area(const std::vector<math::vec3> &polygon) {
          std::sqrt(total.x * total.x + total.y * total.y + total.z * total.z);
 }
 
-std::vector<uint32_t> get_primitives_intersecting_node(
+std::set<uint32_t> get_primitives_intersecting_node(
     const bvh_t &bvh, const math::aabb_t &aabb,
     const std::vector<math::triangle_t> &triangles) {
   uint32_t stack[64], stack_top = 0;
   stack[stack_top++] = 0;
-  std::vector<uint32_t> intersections{};
+  std::set<uint32_t> intersections{};
   while (stack_top) {
     const node_t &node = bvh.nodes[stack[--stack_top]];
     if (node.aabb().intersects(aabb)) {
@@ -163,7 +163,7 @@ std::vector<uint32_t> get_primitives_intersecting_node(
         for (uint32_t i = 0; i < node.prim_count; i++) {
           if (aabb.intersects(
                   triangles[bvh.prim_indices[node.index + i]].aabb()))
-            intersections.push_back(bvh.prim_indices[node.index + i]);
+            intersections.emplace(bvh.prim_indices[node.index + i]);
         }
       } else {
         stack[stack_top++] = node.index + 1;
@@ -212,7 +212,7 @@ float epo_of_bvh(const bvh_t                         &bvh,
                current_node_index += num_threads) {
             const node_t &current = bvh.nodes[current_node_index];
             // TODO: optimise
-            std::vector<uint32_t> all_triangles_intersecting_node =
+            std::set<uint32_t> all_triangles_intersecting_node =
                 get_primitives_intersecting_node(bvh, current.aabb(),
                                                  triangles);
             std::set<uint32_t> all_triangles_in_node =
