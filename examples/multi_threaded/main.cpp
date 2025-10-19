@@ -10,18 +10,11 @@
 #include <vector>
 
 #include "bvh/bvh.hpp"
+#include "bvh/traversal.hpp"
 #include "glm/common.hpp"
 #include "math/triangle.hpp"
 #include "math/utilies.hpp"
 #include "model/model.hpp"
-
-float safe_inverse(float x) {
-  static constexpr float epsilon = std::numeric_limits<float>::epsilon();
-  if (std::abs(x) <= epsilon) {
-    return x >= 0 ? 1.f / epsilon : -1.f / epsilon;
-  }
-  return 1.f / x;
-}
 
 float clamp(float val, float min, float max) {
   return val > max ? max : val < min ? min : val;
@@ -123,179 +116,6 @@ math::vec3 random_color_from_hit(uint32_t v) {
           (((v + 1) * 789) % 255) / 255.f};
 }
 
-static const uint32_t null_index = std::numeric_limits<uint32_t>::max();
-
-struct hit_t {
-  bool     did_intersect() { return prim_index != null_index; }
-  uint32_t prim_index = null_index;
-  float    t          = 1e30;
-  float    u, v;
-};
-
-struct triangle_hit_t {
-  bool  did_intersect() { return _did_intersect; }
-  float t, u, v;
-  bool  _did_intersect;
-};
-
-struct aabb_hit_t {
-  bool  did_intersect() { return tmin <= tmax; }
-  float tmin, tmax;
-};
-
-struct ray_t {
-  static ray_t create(math::vec3 origin, math::vec3 direction) {
-    ray_t ray;
-    ray.origin    = origin;
-    ray.direction = direction;
-    ray.inverse_direction =
-        math::vec3(safe_inverse(direction.x), safe_inverse(direction.y),
-                   safe_inverse(direction.z));
-    ray.tmax = 1e30;
-    ray.tmin = 0.0001;
-    return ray;
-  }
-  math::vec3 origin, direction, inverse_direction;
-  float      tmax, tmin;
-};
-
-triangle_hit_t intersect_triangle(const math::triangle_t triangle,
-                                  const ray_t            ray) {
-  const math::vec3 e1 = math::vec3{triangle.v0} - math::vec3{triangle.v1};
-  const math::vec3 e2 = math::vec3{triangle.v2} - math::vec3{triangle.v0};
-  const math::vec3 n  = cross(e1, e2);
-
-  const math::vec3 c           = math::vec3{triangle.v0} - ray.origin;
-  const math::vec3 r           = cross(ray.direction, c);
-  const float      inverse_det = 1.f / dot(n, ray.direction);  // could nan ?
-
-  float u = dot(r, e2) * inverse_det;
-  float v = dot(r, e1) * inverse_det;
-  float w = 1.f - u - v;
-
-  if (u >= 0 && v >= 0 && w >= 0) {
-    float t = dot(n, c) * inverse_det;
-    if (t > ray.tmin && t < ray.tmax) {
-      triangle_hit_t hit;
-      hit.t              = t;
-      hit.u              = u;
-      hit.v              = v;
-      hit._did_intersect = true;
-      return hit;
-    }
-  }
-  triangle_hit_t hit;
-  hit._did_intersect = false;
-  return hit;
-}
-
-aabb_hit_t intersect_aabb(const math::vec3 _min, const math::vec3 _max,
-                          const ray_t ray) {
-  math::vec3       tmin     = (_min - ray.origin) * ray.inverse_direction;
-  math::vec3       tmax     = (_max - ray.origin) * ray.inverse_direction;
-  const math::vec3 old_tmin = tmin;
-  const math::vec3 old_tmax = tmax;
-  tmin                      = min(old_tmin, old_tmax);
-  tmax                      = max(old_tmin, old_tmax);
-  float _tmin =
-      math::max(tmin[0], math::max(tmin[1], math::max(tmin[2], ray.tmin)));
-  float _tmax =
-      math::min(tmax[0], math::min(tmax[1], math::min(tmax[2], ray.tmax)));
-  aabb_hit_t hit = aabb_hit_t(_tmin, _tmax);
-  return hit;
-}
-
-hit_t intersect_bvh(bvh::node_t *nodes, uint32_t *indices,
-                    math::triangle_t *triangles, ray_t ray) {
-  static const uint32_t stack_size = 16;
-  uint32_t              stack[stack_size];
-
-  hit_t hit = hit_t();
-
-  uint32_t stack_top = 0;
-
-  bvh::node_t root = nodes[0];
-  if (!intersect_aabb(root.min, root.max, ray).did_intersect()) return hit;
-
-  if (root.is_leaf()) {
-    for (uint32_t i = 0; i < root.prim_count; i++) {
-      const uint32_t         triangle_index = indices[root.index + i];
-      const math::triangle_t triangle       = triangles[triangle_index];
-      triangle_hit_t         triangle_hit   = intersect_triangle(triangle, ray);
-      if (triangle_hit.did_intersect()) {
-        ray.tmax       = triangle_hit.t;
-        hit.prim_index = triangle_index;
-        hit.t          = triangle_hit.t;
-        hit.u          = triangle_hit.u;
-        hit.v          = triangle_hit.v;
-      }
-    }
-    return hit;
-  }
-
-  uint32_t current = root.index;
-
-  while (true) {
-    bvh::node_t left  = nodes[current + 0];
-    bvh::node_t right = nodes[current + 1];
-
-    aabb_hit_t left_hit  = intersect_aabb(left.min, left.max, ray);
-    aabb_hit_t right_hit = intersect_aabb(right.min, right.max, ray);
-
-    uint32_t start = 0;
-    uint32_t end   = 0;
-    if (left_hit.did_intersect() && left.is_leaf()) {
-      if (right_hit.did_intersect() && right.is_leaf()) {
-        start = left.index;
-        end   = right.index + right.prim_count;
-      } else {
-        start = left.index;
-        end   = left.index + left.prim_count;
-      }
-    } else {
-      if (right_hit.did_intersect() && right.is_leaf()) {
-        start = right.index;
-        end   = right.index + right.prim_count;
-      }
-    }
-    for (uint32_t index = start; index < end; index++) {
-      uint32_t               triangle_index = indices[index];
-      const math::triangle_t triangle       = triangles[triangle_index];
-      triangle_hit_t         triangle_hit   = intersect_triangle(triangle, ray);
-      if (triangle_hit.did_intersect()) {
-        ray.tmax       = triangle_hit.t;
-        hit.prim_index = triangle_index;
-        hit.t          = triangle_hit.t;
-        hit.u          = triangle_hit.u;
-        hit.v          = triangle_hit.v;
-      }
-    }
-
-    if (left_hit.did_intersect() && !left.is_leaf()) {
-      if (right_hit.did_intersect() && !right.is_leaf()) {
-        if (stack_top >= stack_size) return hit;
-        if (left_hit.tmin <= right_hit.tmin) {
-          current            = left.index;
-          stack[stack_top++] = right.index;
-        } else {
-          current            = right.index;
-          stack[stack_top++] = left.index;
-        }
-      } else {
-        current = left.index;
-      }
-    } else {
-      if (right_hit.did_intersect() && !right.is_leaf()) {
-        current = right.index;
-      } else {
-        if (stack_top == 0) return hit;
-        current = stack[--stack_top];
-      }
-    }
-  }
-  return hit;
-}
-
 template <typename fn_t>
 void render(uint32_t max_threads, image_t &image, fn_t fn) {
   std::vector<std::pair<uint32_t, uint32_t>> work;
@@ -356,10 +176,10 @@ int main(int argc, char **argv) {
 
   start = std::chrono::high_resolution_clock::now();
   render(16, image, [&](uint32_t x, uint32_t y) {
-    auto [O, D] = camera.ray_gen(x, y);
-    ray_t ray   = ray_t::create(O, D);
-    auto  hit   = intersect_bvh(bvh.nodes.data(), bvh.prim_indices.data(),
-                                triangles.data(), ray);
+    auto [O, D]    = camera.ray_gen(x, y);
+    bvh::ray_t ray = bvh::ray_t::create(O, D);
+    auto       hit = bvh::intersect_bvh(bvh.nodes.data(), bvh.prim_indices.data(),
+                                   triangles.data(), ray);
     if (hit.did_intersect()) {
       return math::vec4{random_color_from_hit(hit.prim_index), 1};
     } else {
