@@ -21,6 +21,10 @@ struct hit_t {
   uint32_t prim_index = null_index;
   float    t          = 1e30;
   float    u, v;
+#ifdef DEBUG_HIT
+  uint32_t node_intersections     = 0;
+  uint32_t triangle_intersections = 0;
+#endif
 };
 
 struct triangle_hit_t {

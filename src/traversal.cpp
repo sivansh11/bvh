@@ -58,6 +58,9 @@ hit_t intersect_bvh(bvh::node_t *nodes, uint32_t *indices,
   uint32_t stack_top = 0;
 
   bvh::node_t root = nodes[0];
+#ifdef DEBUG_HIT
+  hit.node_intersections++;
+#endif
   if (!intersect_aabb(root.min, root.max, ray).did_intersect()) return hit;
 
   if (root.is_leaf()) {
@@ -65,6 +68,9 @@ hit_t intersect_bvh(bvh::node_t *nodes, uint32_t *indices,
       const uint32_t         triangle_index = indices[root.index + i];
       const math::triangle_t triangle       = triangles[triangle_index];
       triangle_hit_t         triangle_hit   = intersect_triangle(triangle, ray);
+#ifdef DEBUG_HIT
+      hit.triangle_intersections++;
+#endif
       if (triangle_hit.did_intersect()) {
         ray.tmax       = triangle_hit.t;
         hit.prim_index = triangle_index;
@@ -82,6 +88,9 @@ hit_t intersect_bvh(bvh::node_t *nodes, uint32_t *indices,
     bvh::node_t left  = nodes[current + 0];
     bvh::node_t right = nodes[current + 1];
 
+#ifdef DEBUG_HIT
+    hit.node_intersections += 2;
+#endif
     aabb_hit_t left_hit  = intersect_aabb(left.min, left.max, ray);
     aabb_hit_t right_hit = intersect_aabb(right.min, right.max, ray);
 
@@ -105,6 +114,9 @@ hit_t intersect_bvh(bvh::node_t *nodes, uint32_t *indices,
       uint32_t               triangle_index = indices[index];
       const math::triangle_t triangle       = triangles[triangle_index];
       triangle_hit_t         triangle_hit   = intersect_triangle(triangle, ray);
+#ifdef DEBUG_HIT
+      hit.triangle_intersections++;
+#endif
       if (triangle_hit.did_intersect()) {
         ray.tmax       = triangle_hit.t;
         hit.prim_index = triangle_index;
