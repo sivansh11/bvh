@@ -45,6 +45,9 @@ bvh_t build_bvh_binned_sah(const std::vector<math::aabb_t> &aabbs,
 bvh_t build_bvh_ploc(const std::vector<math::aabb_t> &aabbs,
                      uint32_t grid_dim = 1024, uint32_t log_bits = 10,
                      uint32_t search_radius = 15);
+bvh_t build_bvh_sweep_sah(const std::vector<math::aabb_t> &aabbs,
+                          uint32_t                         min_primitives = 1,
+                          uint32_t                         max_primitives = 1);
 // create bvh with default parameters
 void reinsertion_optimize(bvh_t &bvh, float batch_size_ratio = 0.05,
                           uint32_t max_itr = 3);

@@ -313,7 +313,7 @@ int main(int argc, char **argv) {
   auto triangles = model::create_triangles_from_mesh(mesh);
   auto aabbs     = math::aabbs_from_triangles(triangles);
   // auto [aabbs, tri_indics] = bvh::presplit(triangles);
-  bvh::bvh_t bvh = bvh::build_bvh_binned_sah(aabbs, 8);
+  bvh::bvh_t bvh = bvh::build_bvh_sweep_sah(aabbs);
   // bvh::presplit_remove_indirection(bvh, tri_indics);
   // bvh::presplit_remove_duplicates(bvh);
   // bvh::reinsertion_optimize(bvh, 0.1, 10);
