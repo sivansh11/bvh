@@ -24,6 +24,9 @@
 
 namespace bvh {
 
+static const float triangle_intersection_cost = 1.1f;
+static const float node_traversal_cost        = 1.f;
+
 void update_node_bounds(bvh_t &bvh, const std::vector<uint32_t> &prim_indices,
                         uint32_t node_index, const math::aabb_t *aabbs) {
   node_t &node = bvh.nodes[node_index];
@@ -40,7 +43,7 @@ void update_node_bounds(bvh_t &bvh, const std::vector<uint32_t> &prim_indices,
 
 float sah_of_node(const bvh_t &bvh, uint32_t node_index) {
   const node_t &node = bvh.nodes[node_index];
-  if (node.is_leaf()) return 1.1f * node.prim_count;
+  if (node.is_leaf()) return triangle_intersection_cost * node.prim_count;
   const node_t &left        = bvh.nodes[node.index + 0];
   const node_t &right       = bvh.nodes[node.index + 1];
   float         left_cost   = sah_of_node(bvh, node.index + 0);
@@ -48,7 +51,7 @@ float sah_of_node(const bvh_t &bvh, uint32_t node_index) {
   float         left_area   = left.aabb().area();
   float         right_area  = right.aabb().area();
   float         parent_area = node.aabb().area();
-  return 1.f + (left_area / parent_area) * left_cost +
+  return node_traversal_cost + (left_area / parent_area) * left_cost +
          (right_area / parent_area) * right_cost;
 }
 
@@ -66,9 +69,9 @@ float sah_of_bvh(const bvh_t &bvh) {
   float cost = 0;
   for (const auto &node : bvh.nodes) {
     if (node.is_leaf()) {
-      cost += 1.1f * node.prim_count * node.aabb().area();
+      cost += triangle_intersection_cost * node.prim_count * node.aabb().area();
     } else {
-      cost += 1.f * node.aabb().area();
+      cost += node_traversal_cost * node.aabb().area();
     }
   }
   return cost / bvh.nodes[0].aabb().area();
@@ -233,9 +236,10 @@ float epo_of_bvh(const bvh_t                         &bvh,
             }
 
             if (current.is_leaf()) {
-              epo += 1.1f * current.prim_count * overlap / total_triangle_area;
+              epo += triangle_intersection_cost * current.prim_count * overlap /
+                     total_triangle_area;
             } else {
-              epo += 1.f * overlap / total_triangle_area;
+              epo += node_traversal_cost * overlap / total_triangle_area;
             }
           }
         },
@@ -252,9 +256,10 @@ float epo_of_bvh(const bvh_t                         &bvh,
 float greedy_sah_of_node(uint32_t left_count, uint32_t right_count,
                          float left_aabb_area, float right_aabb_area,
                          float parent_aabb_area) {
-  return 1.f + ((left_aabb_area * 1.1f * left_count +
-                 right_aabb_area * 1.1f * right_count) /
-                parent_aabb_area);
+  return node_traversal_cost +
+         ((left_aabb_area * triangle_intersection_cost * left_count +
+           right_aabb_area * triangle_intersection_cost * right_count) /
+          parent_aabb_area);
 }
 
 struct split_t {
@@ -364,8 +369,9 @@ split_t find_best_object_split_sweep_sah(
     for (uint32_t i = 1; i < node.prim_count; i++) {
       if (left_costs[i - 1] == FLT_MAX || right_costs[i] == FLT_MAX)
         throw std::runtime_error("something went wrong");
-      float cost =
-          1.f + (1.1f * (left_costs[i - 1] + right_costs[i]) / parent_area);
+      float cost = node_traversal_cost +
+                   (triangle_intersection_cost *
+                    (left_costs[i - 1] + right_costs[i]) / parent_area);
       if (cost < best_split.cost) {
         best_split.cost = cost;
         best_split.axis = axis;
@@ -580,8 +586,9 @@ void collapse_nodes(bvh_t &bvh, uint32_t node_index,
   node_t  &left        = bvh.nodes[left_index];
   node_t  &right       = bvh.nodes[right_index];
   if (left.is_leaf() && right.is_leaf()) {
-    float real_cost    = sah_of_node(bvh, node_index);
-    float cost_if_leaf = 1.1f * (left.prim_count + right.prim_count);
+    float real_cost = sah_of_node(bvh, node_index);
+    float cost_if_leaf =
+        triangle_intersection_cost * (left.prim_count + right.prim_count);
     if (cost_if_leaf <= real_cost) {
       assert(right.index == left.index + left.prim_count);
       deadnodes.emplace(left_index);
