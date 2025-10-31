@@ -6,6 +6,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
 set(FETCHCONTENT_QUIET FALSE)
 
+option(ENABLE_ASAN "Enable ASan for bvh" OFF)
+
 include(FetchContent)
 
 FetchContent_Declare(
@@ -43,6 +45,17 @@ target_include_directories(bvh
   PUBLIC includes
   PUBLIC ${CMAKE_CURRENT_BINARY_DIR}/tinybvh/
 )
+
+if (ENABLE_ASAN)
+  message("enabled ASan")
+  target_compile_options(bvh
+    PUBLIC -fsanitize=address
+    PUBLIC -fno-omit-frame-pointer
+  )
+  target_link_options(bvh
+    PUBLIC -fsanitize=address
+  )
+endif()
 
 if (BVH_BUILD_EXAMPLES)
   add_subdirectory(examples)
