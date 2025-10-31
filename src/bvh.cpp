@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <bit>
 #include <cassert>
+#include <cfloat>
 #include <cmath>
 #include <cstring>
 #include <fstream>
@@ -260,6 +261,7 @@ struct split_t {
   uint32_t axis     = std::numeric_limits<uint32_t>::max();
   float    position = math::infinity;
   float    cost     = math::infinity;
+  uint32_t index    = std::numeric_limits<uint32_t>::max();
 };
 
 struct bin_t {
@@ -343,21 +345,25 @@ split_t find_best_object_split_sweep_sah(
     math::aabb_t left_aabb{};
     uint32_t     left_counter = 0;
     float        left_costs[node.prim_count];
-    for (uint32_t i = 0; i < node.prim_count; i++) {
+    for (auto &left_cost : left_costs) left_cost = FLT_MAX;
+    for (uint32_t i = 0; i < node.prim_count - 1; i++) {
+      left_counter++;
       left_aabb.grow(aabbs[sorted_prim_indices[axis][node.index + i]]);
       left_costs[i] = left_aabb.area() * left_counter;
-      left_counter++;
     }
     math::aabb_t right_aabb{};
     uint32_t     right_counter = 0;
     float        right_costs[node.prim_count];
-    for (int32_t i = node.prim_count - 1; i >= 0; i--) {
+    for (auto &right_cost : right_costs) right_cost = FLT_MAX;
+    for (int32_t i = node.prim_count - 1; i >= 1; i--) {
       right_counter++;
       right_aabb.grow(aabbs[sorted_prim_indices[axis][node.index + i]]);
       right_costs[i] = right_aabb.area() * right_counter;
     }
     // TODO: optimise this, can reduce a loop
     for (uint32_t i = 1; i < node.prim_count; i++) {
+      if (left_costs[i - 1] == FLT_MAX || right_costs[i] == FLT_MAX)
+        throw std::runtime_error("something went wrong");
       float cost =
           1.f + (1.1f * (left_costs[i - 1] + right_costs[i]) / parent_area);
       if (cost < best_split.cost) {
@@ -365,6 +371,7 @@ split_t find_best_object_split_sweep_sah(
         best_split.axis = axis;
         best_split.position =
             centers[sorted_prim_indices[axis][node.index + i]][axis];
+        best_split.index = node.index + i;
       }
     }
   }
@@ -372,16 +379,26 @@ split_t find_best_object_split_sweep_sah(
   return best_split;
 }
 
-uint32_t partition_primitive_indices(bvh_t                 &bvh,
-                                     std::vector<uint32_t> &prim_indices,
-                                     uint32_t node_index, split_t split,
-                                     const math::vec3 *centers) {
+uint32_t partition_primitive_indices_on_split_position(
+    bvh_t &bvh, std::vector<uint32_t> &prim_indices, uint32_t node_index,
+    split_t split, const math::vec3 *centers) {
   node_t &node   = bvh.nodes[node_index];
   auto    middle = std::stable_partition(
       prim_indices.begin() + node.index,
       prim_indices.begin() + node.index + node.prim_count, [&](uint32_t index) {
         return centers[index][split.axis] < split.position;
       });
+  return std::distance(prim_indices.begin(), middle);
+}
+
+uint32_t partition_primitive_indices_on_split_index(
+    bvh_t &bvh, std::vector<uint32_t> &prim_indices, uint32_t node_index,
+    split_t split, const math::vec3 *centers) {
+  node_t &node   = bvh.nodes[node_index];
+  auto    middle = std::stable_partition(
+      prim_indices.begin() + node.index,
+      prim_indices.begin() + node.index + node.prim_count,
+      [&](uint32_t index) { return index < split.index; });
   return std::distance(prim_indices.begin(), middle);
 }
 
@@ -404,7 +421,7 @@ void split_node_binned_sah(bvh_t &bvh, uint32_t node_index, split_t split,
   if (split.axis == std::numeric_limits<uint32_t>::max()) return;
   node_t &node = bvh.nodes[node_index];
 
-  uint32_t right_index = partition_primitive_indices(
+  uint32_t right_index = partition_primitive_indices_on_split_position(
       bvh, bvh.prim_indices, node_index, split, centers);
 
   if (node.index == right_index || node.index + node.prim_count == right_index)
@@ -443,12 +460,33 @@ void split_node_sweep_sah(bvh_t &bvh, uint32_t node_index, split_t split,
   if (split.axis == std::numeric_limits<uint32_t>::max()) return;
   node_t &node = bvh.nodes[node_index];
 
-  uint32_t right_index = partition_primitive_indices(
+  // auto    &sorted_prim_indices_split_axis = sorted_prim_indices[split.axis];
+  // uint32_t right_index = partition_primitive_indices_on_split_index(
+  //     bvh, sorted_prim_indices_split_axis, node_index, split, centers);
+  // if (right_index != split.index)
+  //   throw std::runtime_error("something went wrong");
+  // std::vector<bool> move_left{};
+  // move_left.resize(node.index + node.prim_count);
+  // for (uint32_t i = node.index; i < node.prim_count + node.index; i++) {
+  //   if (i < split.index)
+  //     move_left[sorted_prim_indices_split_axis[i]] = true;
+  //   else
+  //     move_left[sorted_prim_indices_split_axis[i]] = false;
+  // }
+  // for (uint32_t axis = 0; axis < 3; axis++) {
+  //   if (split.axis == axis) continue;
+  //   auto &sorted_prim_indices_axis = sorted_prim_indices[axis];
+  //   std::stable_partition(
+  //       sorted_prim_indices_axis.begin() + node.index,
+  //       sorted_prim_indices_axis.begin() + node.index + node.prim_count,
+  //       [&](uint32_t index) { return move_left[index]; });
+  // }
+  uint32_t right_index = partition_primitive_indices_on_split_position(
       bvh, sorted_prim_indices[split.axis], node_index, split, centers);
   for (uint32_t i = 0; i < 3; i++) {
     if (split.axis == i) continue;
-    partition_primitive_indices(bvh, sorted_prim_indices[i], node_index, split,
-                                centers);
+    uint32_t split_index = partition_primitive_indices_on_split_position(
+        bvh, sorted_prim_indices[i], node_index, split, centers);
   }
 
   if (node.index == right_index || node.index + node.prim_count == right_index)
@@ -925,6 +963,21 @@ bvh_t build_bvh_sweep_sah(const std::vector<math::aabb_t> &aabbs,
                            sorted_prim_indices, min_primitives, max_primitives);
 
   bvh.prim_indices = sorted_prim_indices[0];
+
+  uint32_t depth = depth_of_bvh(bvh);
+  if (depth >= 64) {
+    uint32_t min = std::numeric_limits<uint32_t>::max();
+    uint32_t max = 0;
+    for (const auto &node : bvh.nodes) {
+      if (!node.is_leaf()) continue;
+      min = std::min(node.prim_count, min);
+      max = std::max(node.prim_count, max);
+    }
+    std::cout << "min primitives: " << min << '\n';
+    std::cout << "max primitives: " << max << '\n';
+    std::cout << depth << ' ' << bvh.nodes.size() << '\n';
+    throw std::runtime_error("depth >= 64");
+  }
 
   std::set<uint32_t> deadnodes;
   collapse_nodes(bvh, 0, deadnodes);
