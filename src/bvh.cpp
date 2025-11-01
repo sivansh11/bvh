@@ -339,7 +339,8 @@ split_t find_best_object_split_binned_sah(bvh_t &bvh, uint32_t node_index,
 split_t find_best_object_split_sweep_sah(
     bvh_t &bvh, uint32_t node_index, const math::aabb_t *aabbs,
     const math::vec3           *centers,
-    const std::vector<uint32_t> sorted_prim_indices[3]) {
+    const std::vector<uint32_t> sorted_prim_indices[3],
+    std::vector<float>         &right_costs) {
   node_t &node = bvh.nodes[node_index];
 
   float parent_area = node.aabb().area();
@@ -347,37 +348,34 @@ split_t find_best_object_split_sweep_sah(
   split_t best_split{};
 
   for (uint32_t axis = 0; axis < 3; axis++) {
-    math::aabb_t left_aabb{};
-    uint32_t     left_counter = 0;
-    float        left_costs[node.prim_count];
-    for (auto &left_cost : left_costs) left_cost = FLT_MAX;
-    for (uint32_t i = 0; i < node.prim_count - 1; i++) {
-      left_counter++;
-      left_aabb.grow(aabbs[sorted_prim_indices[axis][node.index + i]]);
-      left_costs[i] = left_aabb.area() * left_counter;
-    }
     math::aabb_t right_aabb{};
     uint32_t     right_counter = 0;
-    float        right_costs[node.prim_count];
-    for (auto &right_cost : right_costs) right_cost = FLT_MAX;
-    for (int32_t i = node.prim_count - 1; i >= 1; i--) {
+    for (int32_t index = node.index + node.prim_count - 1;
+         index >= node.index + 1; index--) {
       right_counter++;
-      right_aabb.grow(aabbs[sorted_prim_indices[axis][node.index + i]]);
-      right_costs[i] = right_aabb.area() * right_counter;
+      right_aabb.grow(aabbs[sorted_prim_indices[axis][index]]);
+      float right_cost   = right_aabb.area() * right_counter;
+      right_costs[index] = right_cost;
+      // TODO: add early out
     }
-    // TODO: optimise this, can reduce a loop
-    for (uint32_t i = 1; i < node.prim_count; i++) {
-      if (left_costs[i - 1] == FLT_MAX || right_costs[i] == FLT_MAX)
-        throw std::runtime_error("something went wrong");
-      float cost = node_traversal_cost +
-                   (triangle_intersection_cost *
-                    (left_costs[i - 1] + right_costs[i]) / parent_area);
+    math::aabb_t left_aabb{};
+    uint32_t     left_counter = 0;
+    for (uint32_t index = node.index; index < node.prim_count + node.index - 1;
+         index++) {
+      left_counter++;
+      left_aabb.grow(aabbs[sorted_prim_indices[axis][index]]);
+      float left_cost  = left_aabb.area() * left_counter;
+      float right_cost = right_costs[index + 1];
+      float cost =
+          node_traversal_cost +
+          (triangle_intersection_cost * (left_cost + right_cost) / parent_area);
+
       if (cost < best_split.cost) {
         best_split.cost = cost;
         best_split.axis = axis;
         best_split.position =
-            centers[sorted_prim_indices[axis][node.index + i]][axis];
-        best_split.index = node.index + i;
+            centers[sorted_prim_indices[axis][index + 1]][axis];
+        best_split.index = index + 1;
       }
     }
   }
@@ -418,6 +416,8 @@ void try_split_node_sweep_sah(bvh_t &bvh, uint32_t node_index,
                               const math::aabb_t    *aabbs,
                               const math::vec3      *centers,
                               std::vector<uint32_t> *sorted_prim_indices,
+                              std::vector<bool>     &move_left,
+                              std::vector<float>    &right_costs,
                               uint32_t min_primitives, uint32_t max_primitives);
 
 void split_node_binned_sah(bvh_t &bvh, uint32_t node_index, split_t split,
@@ -462,37 +462,27 @@ void split_node_binned_sah(bvh_t &bvh, uint32_t node_index, split_t split,
 void split_node_sweep_sah(bvh_t &bvh, uint32_t node_index, split_t split,
                           const math::aabb_t *aabbs, const math::vec3 *centers,
                           std::vector<uint32_t> *sorted_prim_indices,
+                          std::vector<bool>     &move_left,
+                          std::vector<float>    &right_costs,
                           uint32_t min_primitives, uint32_t max_primitives) {
   if (split.axis == std::numeric_limits<uint32_t>::max()) return;
   node_t &node = bvh.nodes[node_index];
 
-  // auto    &sorted_prim_indices_split_axis = sorted_prim_indices[split.axis];
-  // uint32_t right_index = partition_primitive_indices_on_split_index(
-  //     bvh, sorted_prim_indices_split_axis, node_index, split, centers);
-  // if (right_index != split.index)
-  //   throw std::runtime_error("something went wrong");
-  // std::vector<bool> move_left{};
-  // move_left.resize(node.index + node.prim_count);
-  // for (uint32_t i = node.index; i < node.prim_count + node.index; i++) {
-  //   if (i < split.index)
-  //     move_left[sorted_prim_indices_split_axis[i]] = true;
-  //   else
-  //     move_left[sorted_prim_indices_split_axis[i]] = false;
-  // }
-  // for (uint32_t axis = 0; axis < 3; axis++) {
-  //   if (split.axis == axis) continue;
-  //   auto &sorted_prim_indices_axis = sorted_prim_indices[axis];
-  //   std::stable_partition(
-  //       sorted_prim_indices_axis.begin() + node.index,
-  //       sorted_prim_indices_axis.begin() + node.index + node.prim_count,
-  //       [&](uint32_t index) { return move_left[index]; });
-  // }
-  uint32_t right_index = partition_primitive_indices_on_split_position(
-      bvh, sorted_prim_indices[split.axis], node_index, split, centers);
-  for (uint32_t i = 0; i < 3; i++) {
-    if (split.axis == i) continue;
-    uint32_t split_index = partition_primitive_indices_on_split_position(
-        bvh, sorted_prim_indices[i], node_index, split, centers);
+  auto    &sorted_prim_indices_split_axis = sorted_prim_indices[split.axis];
+  uint32_t right_index                    = split.index;
+  for (uint32_t i = node.index; i < right_index; i++) {
+    move_left[sorted_prim_indices_split_axis[i]] = true;
+  }
+  for (uint32_t i = right_index; i < node.index + node.prim_count; i++) {
+    move_left[sorted_prim_indices_split_axis[i]] = false;
+  }
+  for (uint32_t axis = 0; axis < 3; axis++) {
+    if (split.axis == axis) continue;
+    auto &sorted_prim_indices_axis = sorted_prim_indices[axis];
+    std::stable_partition(
+        sorted_prim_indices_axis.begin() + node.index,
+        sorted_prim_indices_axis.begin() + node.index + node.prim_count,
+        [&](uint32_t index) { return move_left[index]; });
   }
 
   if (node.index == right_index || node.index + node.prim_count == right_index)
@@ -521,9 +511,11 @@ void split_node_sweep_sah(bvh_t &bvh, uint32_t node_index, split_t split,
                      aabbs);
 
   try_split_node_sweep_sah(bvh, left_node_index, aabbs, centers,
-                           sorted_prim_indices, min_primitives, max_primitives);
+                           sorted_prim_indices, move_left, right_costs,
+                           min_primitives, max_primitives);
   try_split_node_sweep_sah(bvh, right_node_index, aabbs, centers,
-                           sorted_prim_indices, min_primitives, max_primitives);
+                           sorted_prim_indices, move_left, right_costs,
+                           min_primitives, max_primitives);
 }
 
 void try_split_node_binned_sah(bvh_t &bvh, uint32_t node_index,
@@ -550,27 +542,28 @@ void try_split_node_binned_sah(bvh_t &bvh, uint32_t node_index,
   }
 }
 
-void try_split_node_sweep_sah(bvh_t &bvh, uint32_t node_index,
-                              const math::aabb_t    *aabbs,
-                              const math::vec3      *centers,
-                              std::vector<uint32_t> *sorted_prim_indices,
-                              uint32_t               min_primitives,
-                              uint32_t               max_primitives) {
+void try_split_node_sweep_sah(
+    bvh_t &bvh, uint32_t node_index, const math::aabb_t *aabbs,
+    const math::vec3 *centers, std::vector<uint32_t> *sorted_prim_indices,
+    std::vector<bool> &move_left, std::vector<float> &right_costs,
+    uint32_t min_primitives, uint32_t max_primitives) {
   node_t &node = bvh.nodes[node_index];
   if (node.prim_count <= min_primitives) return;
 
   if (node.prim_count > max_primitives) {
     const split_t split = find_best_object_split_sweep_sah(
-        bvh, node_index, aabbs, centers, sorted_prim_indices);
+        bvh, node_index, aabbs, centers, sorted_prim_indices, right_costs);
     split_node_sweep_sah(bvh, node_index, split, aabbs, centers,
-                         sorted_prim_indices, min_primitives, max_primitives);
+                         sorted_prim_indices, move_left, right_costs,
+                         min_primitives, max_primitives);
   } else {
     float   no_split_cost = sah_of_node(bvh, node_index);
     split_t split         = find_best_object_split_sweep_sah(
-        bvh, node_index, aabbs, centers, sorted_prim_indices);
+        bvh, node_index, aabbs, centers, sorted_prim_indices, right_costs);
     if (split.cost < no_split_cost) {
       split_node_sweep_sah(bvh, node_index, split, aabbs, centers,
-                           sorted_prim_indices, min_primitives, max_primitives);
+                           sorted_prim_indices, move_left, right_costs,
+                           min_primitives, max_primitives);
     }
   }
 }
@@ -965,9 +958,13 @@ bvh_t build_bvh_sweep_sah(const std::vector<math::aabb_t> &aabbs,
   root.prim_count = primitive_count;
   bvh.nodes.push_back(root);
 
+  std::vector<bool>  move_left(primitive_count);
+  std::vector<float> right_costs(primitive_count);
+
   update_node_bounds(bvh, sorted_prim_indices[0], 0, aabbs.data());
   try_split_node_sweep_sah(bvh, 0, aabbs.data(), centers.data(),
-                           sorted_prim_indices, min_primitives, max_primitives);
+                           sorted_prim_indices, move_left, right_costs,
+                           min_primitives, max_primitives);
 
   bvh.prim_indices = sorted_prim_indices[0];
 
