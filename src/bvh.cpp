@@ -395,17 +395,6 @@ uint32_t partition_primitive_indices_on_split_position(
   return std::distance(prim_indices.begin(), middle);
 }
 
-uint32_t partition_primitive_indices_on_split_index(
-    bvh_t &bvh, std::vector<uint32_t> &prim_indices, uint32_t node_index,
-    split_t split, const math::vec3 *centers) {
-  node_t &node   = bvh.nodes[node_index];
-  auto    middle = std::stable_partition(
-      prim_indices.begin() + node.index,
-      prim_indices.begin() + node.index + node.prim_count,
-      [&](uint32_t index) { return index < split.index; });
-  return std::distance(prim_indices.begin(), middle);
-}
-
 void try_split_node_binned_sah(bvh_t &bvh, uint32_t node_index,
                                const math::aabb_t *aabbs,
                                const math::vec3 *centers, uint32_t num_samples,
