@@ -629,10 +629,6 @@ std::pair<std::vector<math::aabb_t>, std::vector<uint32_t>> presplit(
     total_splits +=
         num_splits(total_priority, triangle, triangles.size(), split_factor);
 
-  std::cout << "total_priority: " << total_priority << '\n';
-  std::cout << "total_splits: " << total_splits << '\n';
-  std::cout << "total_tris: " << triangles.size() << '\n';
-
   std::vector<math::aabb_t> aabbs(total_splits);
   std::vector<uint32_t>     tri_indices(total_splits);
 
