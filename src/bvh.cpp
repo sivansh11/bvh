@@ -661,6 +661,7 @@ std::pair<std::vector<math::aabb_t>, std::vector<uint32_t>> presplit(
       uint32_t split_axis     = aabb.largest_axis();
       float    largest_extent = aabb.largest_extent();
 
+#if 1
       float depth =
           std::min(-1.f, std::floor(std::log2(aabb.largest_extent() /
                                               global_extent[split_axis])));
@@ -679,6 +680,9 @@ std::pair<std::vector<math::aabb_t>, std::vector<uint32_t>> presplit(
           split_pos > aabb.max[split_axis]) {
         split_pos = mid_pos;
       }
+#else
+      float split_pos = aabb.center()[split_axis];
+#endif
 
       auto [l_aabb, r_aabb] = triangle.split(split_axis, split_pos);
       l_aabb.shrink(aabb);
