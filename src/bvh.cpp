@@ -609,10 +609,25 @@ float priority(const math::triangle_t triangle) {
                    (aabb.area() - triangle.area()));
 }
 
+float total_presplit_priority(const std::vector<math::triangle_t> &triangles) {
+  float total_priority = 0;
+  for (const auto &triangle : triangles) total_priority += priority(triangle);
+  return total_priority;
+}
+
 uint32_t num_splits(float total_priority, const math::triangle_t triangle,
                     uint32_t triangle_count, float split_factor) {
   return 1 + (uint32_t)(priority(triangle) *
                         (triangle_count * split_factor / total_priority));
+}
+
+uint32_t total_presplit_splits(float total_priority, float split_factor,
+                               const std::vector<math::triangle_t> &triangles) {
+  uint32_t total_splits = 0;
+  for (const auto &triangle : triangles)
+    total_splits +=
+        num_splits(total_priority, triangle, triangles.size(), split_factor);
+  return total_splits;
 }
 
 std::pair<std::vector<math::aabb_t>, std::vector<uint32_t>> presplit(

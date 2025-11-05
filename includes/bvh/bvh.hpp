@@ -33,11 +33,14 @@ struct blas_instance_t {
   uint32_t     index;
 };
 
-void presplit_remove_indirection(bvh_t                       &bvh,
-                                 const std::vector<uint32_t> &tri_indices);
-void presplit_remove_duplicates(bvh_t &bvh);
+float total_presplit_priority(const std::vector<math::triangle_t> &triangles);
+uint32_t total_presplit_splits(float total_priority, float split_factor,
+                               const std::vector<math::triangle_t> &triangles);
 std::pair<std::vector<math::aabb_t>, std::vector<uint32_t>> presplit(
     const std::vector<math::triangle_t> &triangles, float split_factor = 0.3f);
+void  presplit_remove_indirection(bvh_t                       &bvh,
+                                  const std::vector<uint32_t> &tri_indices);
+void  presplit_remove_duplicates(bvh_t &bvh);
 bvh_t build_bvh_binned_sah(const std::vector<math::aabb_t> &aabbs,
                            uint32_t                         num_samples    = 8,
                            uint32_t                         min_primitives = 1,
