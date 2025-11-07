@@ -24,14 +24,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(model)
 
-file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/tinybvh/)
-file(DOWNLOAD
-    https://raw.githubusercontent.com/jbikker/tinybvh/main/tiny_bvh.h
-    "${CMAKE_CURRENT_BINARY_DIR}/tinybvh/tiny_bvh.h"
-    STATUS DOWNLOAD_STATUS
-)
-message("-- fetched tinybvh")
-
 file(GLOB_RECURSE SRC_FILES src/*cpp)
 
 add_library(bvh ${SRC_FILES})
