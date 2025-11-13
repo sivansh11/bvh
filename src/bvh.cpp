@@ -22,6 +22,8 @@
 #include "math/triangle.hpp"
 #include "model/model.hpp"
 
+#define ENABLE_BACKUP_SPLITS
+
 namespace bvh {
 
 static const float triangle_intersection_cost = 1.1f;
@@ -409,18 +411,33 @@ void try_split_node_sweep_sah(bvh_t &bvh, uint32_t node_index,
                               std::vector<float>    &right_costs,
                               uint32_t min_primitives, uint32_t max_primitives);
 
-void split_node_binned_sah(bvh_t &bvh, uint32_t node_index, split_t split,
+bool split_node_binned_sah(bvh_t &bvh, uint32_t node_index, split_t split,
                            const math::aabb_t *aabbs, const math::vec3 *centers,
                            uint32_t num_samples, uint32_t min_primitives,
                            uint32_t max_primitives) {
-  if (split.axis == std::numeric_limits<uint32_t>::max()) return;
   node_t &node = bvh.nodes[node_index];
 
-  uint32_t right_index = partition_primitive_indices_on_split_position(
-      bvh, bvh.prim_indices, node_index, split, centers);
+  uint32_t right_index;
 
-  if (node.index == right_index || node.index + node.prim_count == right_index)
-    return;
+  if (split.axis == std::numeric_limits<uint32_t>::max()) {
+#ifdef ENABLE_BACKUP_SPLITS
+    right_index = node.index + (node.prim_count / 2);
+#else
+    return false;
+#endif
+  } else {
+    right_index = partition_primitive_indices_on_split_position(
+        bvh, bvh.prim_indices, node_index, split, centers);
+  }
+
+  if (node.index == right_index ||
+      node.index + node.prim_count == right_index) {
+#ifdef ENABLE_BACKUP_SPLITS
+    right_index = node.index + (node.prim_count / 2);
+#else
+    return false;
+#endif
+  }
 
   node_t left, right;
 
@@ -446,19 +463,40 @@ void split_node_binned_sah(bvh_t &bvh, uint32_t node_index, split_t split,
                             min_primitives, max_primitives);
   try_split_node_binned_sah(bvh, right_node_index, aabbs, centers, num_samples,
                             min_primitives, max_primitives);
+  return true;
 }
 
-void split_node_sweep_sah(bvh_t &bvh, uint32_t node_index, split_t split,
+bool split_node_sweep_sah(bvh_t &bvh, uint32_t node_index, split_t split,
                           const math::aabb_t *aabbs, const math::vec3 *centers,
                           std::vector<uint32_t> *sorted_prim_indices,
                           std::vector<bool>     &move_left,
                           std::vector<float>    &right_costs,
                           uint32_t min_primitives, uint32_t max_primitives) {
-  if (split.axis == std::numeric_limits<uint32_t>::max()) return;
   node_t &node = bvh.nodes[node_index];
 
-  auto    &sorted_prim_indices_split_axis = sorted_prim_indices[split.axis];
-  uint32_t right_index                    = split.index;
+  uint32_t right_index;
+  if (split.axis == std::numeric_limits<uint32_t>::max()) {
+#ifdef ENABLE_BACKUP_SPLITS
+    right_index = node.index + (node.prim_count / 2);
+#else
+    return false;
+#endif
+  } else {
+    right_index = split.index;
+  }
+
+  if (node.index == right_index ||
+      node.index + node.prim_count == right_index) {
+#ifdef ENABLE_BACKUP_SPLITS
+    right_index = node.index + (node.prim_count / 2);
+#else
+    return false;
+#endif
+  }
+
+  if (split.axis == std::numeric_limits<uint32_t>::max()) split.axis = 0;
+
+  auto &sorted_prim_indices_split_axis = sorted_prim_indices[split.axis];
   for (uint32_t i = node.index; i < right_index; i++) {
     move_left[sorted_prim_indices_split_axis[i]] = true;
   }
@@ -473,9 +511,6 @@ void split_node_sweep_sah(bvh_t &bvh, uint32_t node_index, split_t split,
         sorted_prim_indices_axis.begin() + node.index + node.prim_count,
         [&](uint32_t index) { return move_left[index]; });
   }
-
-  if (node.index == right_index || node.index + node.prim_count == right_index)
-    return;
 
   node_t left, right;
 
@@ -505,6 +540,7 @@ void split_node_sweep_sah(bvh_t &bvh, uint32_t node_index, split_t split,
   try_split_node_sweep_sah(bvh, right_node_index, aabbs, centers,
                            sorted_prim_indices, move_left, right_costs,
                            min_primitives, max_primitives);
+  return true;
 }
 
 void try_split_node_binned_sah(bvh_t &bvh, uint32_t node_index,
@@ -515,18 +551,25 @@ void try_split_node_binned_sah(bvh_t &bvh, uint32_t node_index,
   node_t &node = bvh.nodes[node_index];
   if (node.prim_count <= min_primitives) return;
 
+  bool    should_split = false;
+  split_t split;
+
   if (node.prim_count > max_primitives) {
-    const split_t split = find_best_object_split_binned_sah(
-        bvh, node_index, aabbs, centers, num_samples);
-    split_node_binned_sah(bvh, node_index, split, aabbs, centers, num_samples,
-                          min_primitives, max_primitives);
+    should_split = true;
+    split = find_best_object_split_binned_sah(bvh, node_index, aabbs, centers,
+                                              num_samples);
   } else {
-    float   no_split_cost = sah_of_node(bvh, node_index);
-    split_t split = find_best_object_split_binned_sah(bvh, node_index, aabbs,
-                                                      centers, num_samples);
+    float no_split_cost = sah_of_node(bvh, node_index);
+    split = find_best_object_split_binned_sah(bvh, node_index, aabbs, centers,
+                                              num_samples);
     if (split.cost < no_split_cost) {
-      split_node_binned_sah(bvh, node_index, split, aabbs, centers, num_samples,
-                            min_primitives, max_primitives);
+      should_split = true;
+    }
+  }
+  if (should_split) {
+    if (!split_node_binned_sah(bvh, node_index, split, aabbs, centers,
+                               num_samples, min_primitives, max_primitives)) {
+      // Maybe add logging ?
     }
   }
 }
@@ -539,20 +582,26 @@ void try_split_node_sweep_sah(
   node_t &node = bvh.nodes[node_index];
   if (node.prim_count <= min_primitives) return;
 
+  bool    should_split = false;
+  split_t split;
+
   if (node.prim_count > max_primitives) {
-    const split_t split = find_best_object_split_sweep_sah(
-        bvh, node_index, aabbs, centers, sorted_prim_indices, right_costs);
-    split_node_sweep_sah(bvh, node_index, split, aabbs, centers,
-                         sorted_prim_indices, move_left, right_costs,
-                         min_primitives, max_primitives);
+    should_split = true;
+    split = find_best_object_split_sweep_sah(bvh, node_index, aabbs, centers,
+                                             sorted_prim_indices, right_costs);
   } else {
-    float   no_split_cost = sah_of_node(bvh, node_index);
-    split_t split         = find_best_object_split_sweep_sah(
-        bvh, node_index, aabbs, centers, sorted_prim_indices, right_costs);
+    float no_split_cost = sah_of_node(bvh, node_index);
+    split = find_best_object_split_sweep_sah(bvh, node_index, aabbs, centers,
+                                             sorted_prim_indices, right_costs);
     if (split.cost < no_split_cost) {
-      split_node_sweep_sah(bvh, node_index, split, aabbs, centers,
-                           sorted_prim_indices, move_left, right_costs,
-                           min_primitives, max_primitives);
+      should_split = true;
+    }
+  }
+  if (should_split) {
+    if (!split_node_sweep_sah(bvh, node_index, split, aabbs, centers,
+                              sorted_prim_indices, move_left, right_costs,
+                              min_primitives, max_primitives)) {
+      // maybe add logging ?
     }
   }
 }
@@ -673,10 +722,12 @@ std::pair<std::vector<math::aabb_t>, std::vector<uint32_t>> presplit(
       float    largest_extent = aabb.largest_extent();
 
 #if 1
-      float depth =
-          std::min(-1.f, std::floor(std::log2(aabb.largest_extent() /
-                                              global_extent[split_axis])));
-      float cell_size = std::exp2(depth) * global_extent[split_axis];
+      float depth = std::min(
+          -1.f,
+          std::floor(std::log2(aabb.largest_extent() /
+                               global_extent[static_cast<int>(split_axis)])));
+      float cell_size =
+          std::exp2(depth) * global_extent[static_cast<int>(split_axis)];
       if (cell_size >= largest_extent - 0.0001f) {
         cell_size *= 0.5f;
       }
