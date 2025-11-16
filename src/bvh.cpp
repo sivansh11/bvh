@@ -885,10 +885,6 @@ bvh_t build_bvh_binned_sah(const std::vector<math::aabb_t> &aabbs,
   try_split_node_binned_sah(bvh, 0, aabbs.data(), centers.data(), num_samples,
                             min_primitives, max_primitives);
 
-  std::set<uint32_t> deadnodes;
-  collapse_nodes(bvh, 0, deadnodes);
-  remove_deadnodes(bvh, deadnodes);
-
   return bvh;
 }
 
@@ -972,10 +968,6 @@ bvh_t build_bvh_ploc(const std::vector<math::aabb_t> &aabbs, uint32_t grid_dim,
 
   fix_primitive_indices(bvh);
 
-  std::set<uint32_t> deadnodes;
-  collapse_nodes(bvh, 0, deadnodes);
-  remove_deadnodes(bvh, deadnodes);
-
   return bvh;
 }
 
@@ -1037,10 +1029,6 @@ bvh_t build_bvh_sweep_sah(const std::vector<math::aabb_t> &aabbs,
     std::cout << depth << ' ' << bvh.nodes.size() << '\n';
     throw std::runtime_error("depth >= 64");
   }
-
-  std::set<uint32_t> deadnodes;
-  collapse_nodes(bvh, 0, deadnodes);
-  remove_deadnodes(bvh, deadnodes);
 
   return bvh;
 }
