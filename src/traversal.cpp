@@ -92,6 +92,7 @@ hit_t intersect_bvh(bvh::node_t *nodes, uint32_t *indices,
     uint32_t end   = 0;
     if (left_hit.did_intersect() && left.is_leaf()) {
       if (right_hit.did_intersect() && right.is_leaf()) {
+        assert(left.index + left.prim_count == right.index);
         start = left.index;
         end   = right.index + right.prim_count;
       } else {
