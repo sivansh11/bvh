@@ -3,6 +3,7 @@
 #include "bvh/traversal.hpp"
 #include "glm/ext/quaternion_geometric.hpp"
 #include "glm/geometric.hpp"
+#include "math/math.hpp"
 
 namespace tlas {
 
@@ -26,9 +27,10 @@ hit_t intersect_tlas(bvh::node_t *nodes, uint32_t *indices,
       blas_t          &blas           = blases[instance.blas_index];
       math::vec4       local_origin =
           instance.inv_transform * math::vec4{ray.origin, 1.f};
-      math::vec4 local_direction = math::normalize(
-          instance.inv_transform * math::vec4{ray.direction, 0.f});
-      float      l         = math::length(local_direction);
+      math::vec4 local_direction =
+          instance.inv_transform * math::vec4{ray.direction, 0.f};
+      float l              = math::length(local_direction);
+      local_direction      = math::normalize(local_direction);
       bvh::ray_t local_ray = bvh::ray_t::create(local_origin, local_direction);
       local_ray.tmax       = ray.tmax * l;
       local_ray.tmin       = ray.tmin * l;
@@ -60,6 +62,7 @@ hit_t intersect_tlas(bvh::node_t *nodes, uint32_t *indices,
     uint32_t end   = 0;
     if (left_hit.did_intersect() && left.is_leaf()) {
       if (right_hit.did_intersect() && right.is_leaf()) {
+        assert(left.index + left.prim_count == right.index);
         start = left.index;
         end   = right.index + right.prim_count;
       } else {
@@ -78,9 +81,10 @@ hit_t intersect_tlas(bvh::node_t *nodes, uint32_t *indices,
       blas_t          &blas           = blases[instance.blas_index];
       math::vec4       local_origin =
           instance.inv_transform * math::vec4{ray.origin, 1.f};
-      math::vec4 local_direction = math::normalize(
-          instance.inv_transform * math::vec4{ray.direction, 0.f});
-      float      l         = math::length(local_direction);
+      math::vec4 local_direction =
+          instance.inv_transform * math::vec4{ray.direction, 0.f};
+      float l              = math::length(local_direction);
+      local_direction      = math::normalize(local_direction);
       bvh::ray_t local_ray = bvh::ray_t::create(local_origin, local_direction);
       local_ray.tmax       = ray.tmax * l;
       local_ray.tmin       = ray.tmin * l;
