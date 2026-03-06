@@ -6,6 +6,7 @@
 #include <iostream>
 #include <limits>
 #include <random>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
@@ -15,6 +16,7 @@
 #include "camera.hpp"
 #include "glm/common.hpp"
 #include "glm/geometric.hpp"
+#include "glm/vector_relational.hpp"
 #include "image.hpp"
 #include "math/aabb.hpp"
 #include "math/math.hpp"
@@ -70,7 +72,13 @@ math::vec4 turbo_color_map(float x) {
                     dot(v4, kBlueVec4) + dot(v2, kBlueVec2), 1);
 }
 
-enum class material_type_t { e_lambertian, e_metal, e_dielectric, e_emissive };
+enum class material_type_t {
+  e_lambertian,
+  e_metal,
+  e_dielectric,
+  e_emissive,
+  e_none,
+};
 
 struct lambertian_t {
   math::vec3 albedo;
@@ -220,7 +228,8 @@ struct random_t {
 };
 
 bool russian_roulette_terminate(random_t &random, math::vec3 &throughput) {
-  float p = std::max({throughput.r, throughput.g, throughput.b});
+  float p =
+      std::min(1.0f, std::max({throughput.r, throughput.g, throughput.b}));
   if (random.randf() > p) return true;
   throughput /= p;
   return false;
@@ -331,10 +340,10 @@ int main(int argc, char **argv) {
                                                std::move(triangles));
     }
     uint32_t   blas_index = blases.size() - 1;
-    math::mat4 transform  = get_model_fit_transform(blases,                //
-                                                    blas_index,            //
-                                                    {0.f, -0.2f, -0.20f},  //
-                                                    {0.f, pi / 2, 0.f},    //
+    math::mat4 transform  = get_model_fit_transform(blases,               //
+                                                    blas_index,           //
+                                                    {0.f, -0.2f, -0.2f},  //
+                                                    {0.f, pi / 2, 0.f},   //
                                                     0.6f);
 
     add_instance(        //
@@ -343,10 +352,15 @@ int main(int argc, char **argv) {
         instance_aabbs,  //
         materials,       //
         transform,       //
-        create_metal(math::vec3{1.f}, 0.5f));
+        create_lambertian(math::vec3{1}));
   }
 
   bvh::bvh_t tlas = bvh::build_bvh_sweep_sah(instance_aabbs);
+
+  std::vector<uint32_t> light_instance_indices;
+  for (uint32_t i = 0; i < materials.size(); i++)
+    if (materials[i].type == material_type_t::e_emissive)
+      light_instance_indices.push_back(i);
 
   image_t  image{640, 640};
   camera_t camera{90.f, {0.f, 0.f, -1.025f}, {0, 0, 0}};
@@ -354,8 +368,9 @@ int main(int argc, char **argv) {
 
   auto start = std::chrono::high_resolution_clock::now();
 
-  constexpr uint32_t max_spp    = 64;
+  constexpr uint32_t max_spp    = 256;
   constexpr uint32_t max_bounce = 100;
+  constexpr bool     nee        = true;
 
   render(16, image, [&](uint32_t x, uint32_t y) {
     random_t   random(x + (y * image._width));
@@ -369,6 +384,8 @@ int main(int argc, char **argv) {
 
       math::vec3 throughput{1.0f};
       math::vec3 color{0.0f};
+      material_t previous_material;
+      previous_material.type = material_type_t::e_none;
 
       for (uint32_t bounce = 0; bounce < max_bounce; bounce++) {
         auto hit =
@@ -390,20 +407,75 @@ int main(int argc, char **argv) {
         math::vec3 hit_pos = ray.origin + ray.direction * hit.blas_hit.t;
 
         if (material.type == material_type_t::e_emissive) {
-          color += throughput * material.as.light.emission;
+          if (math::dot(normal, ray.direction) < 0.0f) {
+            if (nee && bounce == 0 || !nee ||
+                previous_material.type == material_type_t::e_metal ||
+                previous_material.type == material_type_t::e_dielectric) {
+              color += throughput * material.as.light.emission;
+            }
+          }
           break;
+        }
+
+        if (nee && material.type == material_type_t::e_lambertian &&
+            light_instance_indices.size()) {
+          uint32_t light_instance_index = light_instance_indices[random.sample(
+              light_instance_indices.size())];
+          const auto &light_instance    = instances[light_instance_index];
+          const auto &light_blas        = blases[light_instance.blas_index];
+          uint32_t triangle_index = random.sample(light_blas.triangles.size());
+          auto     light_triangle = light_blas.triangles[triangle_index];
+          light_triangle.v0 =
+              light_instance.transform * math::vec4{light_triangle.v0, 1.f};
+          light_triangle.v1 =
+              light_instance.transform * math::vec4{light_triangle.v1, 1.f};
+          light_triangle.v2 =
+              light_instance.transform * math::vec4{light_triangle.v2, 1.f};
+
+          math::vec3 p_world      = random.sample_triangle(light_triangle);
+          math::vec3 light_normal = light_triangle.normal();
+
+          math::vec3 L       = p_world - hit_pos;
+          float      dist_sq = math::length2(L);
+          float      dist    = std::sqrt(dist_sq);
+          L /= dist;
+
+          float cos_theta = math::dot(normal, L);
+          float cos_light = math::dot(light_normal, -L);
+
+          if (cos_theta > 0.0f && cos_light > 0.0f) {
+            bvh::ray_t shadow_ray =
+                bvh::ray_t::create(hit_pos + normal * 0.0001f, L);
+            auto shadow_hit = tlas::intersect_tlas(
+                tlas.nodes.data(), tlas.prim_indices.data(), instances.data(),
+                blases.data(), shadow_ray);
+
+            if (shadow_hit.did_intersect() &&
+                shadow_hit.instance_index == light_instance_index) {
+              float area = light_triangle.area();
+              float pdf  = dist_sq / (area * cos_light);
+              pdf        = pdf / (light_blas.triangles.size() *
+                           light_instance_indices.size());
+
+              math::vec3 brdf = material.as.lambertian.albedo / pi;
+              color += throughput * brdf *
+                       materials[light_instance_index].as.light.emission *
+                       cos_theta / pdf;
+            }
+          }
         }
 
         if (russian_roulette_terminate(random, throughput)) break;
 
+        previous_material = material;
         switch (material.type) {
           case material_type_t::e_lambertian: {
-            math::vec3 scatter_direction =
-                random.unit_vector_on_hemisphere(normal);
-            ray = bvh::ray_t::create(hit_pos + normal * 0.0001f,
-                                     scatter_direction);
+            math::vec3 scatter_direction = normal + random.unit_vector();
+            scatter_direction = math::normalize(scatter_direction);
+            ray             = bvh::ray_t::create(hit_pos + normal * 0.0001f,
+                                                 scatter_direction);
             float cos_theta = math::dot(normal, scatter_direction);
-            throughput *= material.as.lambertian.albedo * 2.0f * cos_theta;
+            throughput *= material.as.lambertian.albedo;
           } break;
           case material_type_t::e_metal: {
             math::vec3 reflected =
@@ -448,9 +520,15 @@ int main(int argc, char **argv) {
             // terminate ray
             bounce = max_bounce;
           } break;
+          case material_type_t::e_none: {
+            throw std::runtime_error("unknown material");
+          } break;
         }
       }
       final_color += color;
+    }
+    if (math::any(math::isnan(final_color))) {
+      throw std::runtime_error("nan");
     }
     return math::vec4{final_color / static_cast<float>(max_spp), 1.f};
   });
