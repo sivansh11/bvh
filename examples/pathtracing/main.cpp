@@ -1,4 +1,3 @@
-#include <cassert>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -15,8 +14,10 @@
 #include "bvh/traversal.hpp"
 #include "camera.hpp"
 #include "glm/common.hpp"
+#include "glm/geometric.hpp"
 #include "image.hpp"
 #include "math/aabb.hpp"
+#include "math/math.hpp"
 #include "math/triangle.hpp"
 #include "math/utilies.hpp"
 #include "model/model.hpp"
@@ -69,10 +70,63 @@ math::vec4 turbo_color_map(float x) {
                     dot(v4, kBlueVec4) + dot(v2, kBlueVec2), 1);
 }
 
-struct material_t {
-  math::vec3 color;
-  math::vec3 emissive;
+enum class material_type_t { e_lambertian, e_metal, e_dielectric, e_emissive };
+
+struct lambertian_t {
+  math::vec3 albedo;
 };
+
+struct metal_t {
+  math::vec3 albedo;
+  float      fuzz;
+};
+
+struct dielectric_t {
+  float refraction_index;
+};
+
+struct light_t {
+  math::vec3 emission;
+};
+
+struct material_t {
+  material_type_t type;
+  union as_t {
+    lambertian_t lambertian;
+    metal_t      metal;
+    dielectric_t dielectric;
+    light_t      light;
+  } as;
+};
+
+material_t create_lambertian(math::vec3 albedo) {
+  material_t material;
+  material.type                 = material_type_t::e_lambertian;
+  material.as.lambertian.albedo = albedo;
+  return material;
+}
+
+material_t create_metal(math::vec3 albedo, float fuzz) {
+  material_t material;
+  material.type            = material_type_t::e_metal;
+  material.as.metal.albedo = albedo;
+  material.as.metal.fuzz   = fuzz;
+  return material;
+}
+
+material_t create_dielectric(float refraction_index) {
+  material_t material;
+  material.type                           = material_type_t::e_dielectric;
+  material.as.dielectric.refraction_index = refraction_index;
+  return material;
+}
+
+material_t create_light(math::vec3 emission) {
+  material_t material;
+  material.type              = material_type_t::e_emissive;
+  material.as.light.emission = emission;
+  return material;
+}
 
 math::mat4 create_transform(math::vec3 translation, math::vec3 rotation,
                             math::vec3 scale) {
@@ -98,8 +152,8 @@ void add_instance(const std::vector<tlas::blas_t> &blases,
     };
     math::vec3 transformed_corner = transform * math::vec4{corner, 1};
     transformed_aabb.grow(transformed_corner);
-    // transformed_aabb.min -= 0.001f;
-    // transformed_aabb.max += 0.001f;
+    transformed_aabb.min -= 0.001f;
+    transformed_aabb.max += 0.001f;
   }
   instances.emplace_back(transform, math::inverse(transform), transformed_aabb,
                          blas_index);
@@ -131,16 +185,21 @@ struct random_t {
 
   float randf() { return dist(rng); }
 
+  math::vec3 unit_vector() {
+    while (true) {
+      auto p     = math::vec3{randf() * 2.f - 1.f, randf() * 2.f - 1.f,
+                          randf() * 2.f - 1.f};
+      auto lensq = math::length2(p);
+      if (1e-160 < lensq && lensq <= 1) return p / math::sqrt(lensq);
+    }
+  }
+
   math::vec3 unit_vector_on_hemisphere(const math::vec3 normal) {
-    float      r1  = 2.0f * math::pi<float>() * dist(rng);
-    float      r2  = dist(rng);
-    float      r2s = math::sqrt(r2);
-    math::vec3 a   = (math::abs(normal.x) > 0.9f) ? math::vec3(0, 1, 0)
-                                                  : math::vec3(1, 0, 0);
-    math::vec3 u   = normalize(cross(a, normal));
-    math::vec3 v   = cross(normal, u);
-    return math::normalize(u * math::cos(r1) * r2s + v * math::sin(r1) * r2s +
-                           normal * math::sqrt(1.0f - r2));
+    math::vec3 v = unit_vector();
+    if (math::dot(v, normal) > 0.0f)
+      return v;
+    else
+      return -v;
   }
 
   uint32_t sample(uint32_t n) {
@@ -167,6 +226,13 @@ bool russian_roulette_terminate(random_t &random, math::vec3 &throughput) {
   return false;
 }
 
+math::vec3 background(const bvh::ray_t &ray) {
+  return math::vec3{0};
+  math::vec3 direction = math::normalize(ray.direction);
+  auto       a         = 0.5f * (direction.y + 1.f);
+  return (1.f - a) * math::vec3{1} + a * math::vec3{0.5f, 0.7f, 1.f};
+}
+
 int main(int argc, char **argv) {
   if (argc != 2) {
     std::cerr << "Usage: [simple] [model]\n";
@@ -178,12 +244,11 @@ int main(int argc, char **argv) {
   std::vector<math::aabb_t>     instance_aabbs;
   std::vector<material_t>       materials;
 
-  const math::vec3 white{0.9f};
-  const math::vec3 red{0.9f, 0.1f, 0.1f};
-  const math::vec3 green{0.1f, 0.9f, 0.1f};
+  const math::vec3 white{.73, .73, .73};
+  const math::vec3 red{.65, .05, .05};
+  const math::vec3 green{.12, .45, .15};
   const float      pi = math::pi<float>();
 
-  // cornell box
   {
     auto model = model::load_model_from_path("./plain.obj");
     for (auto &mesh : model.meshes) {
@@ -192,6 +257,17 @@ int main(int argc, char **argv) {
       tlas::blas_t &blas = blases.emplace_back(bvh::build_bvh_sweep_sah(aabbs),
                                                std::move(triangles));
     }
+
+    // light
+    add_instance(                            //
+        blases,                              //
+        instances,                           //
+        instance_aabbs,                      //
+        materials,                           //
+        create_transform({0.f, 0.49f, 0.f},  //
+                         {pi, 0.f, 0.f},     //
+                         {0.3f, 0.3f, 0.3f}),
+        create_light(math::vec3{15.f}));
 
     // bottom floor
     add_instance(                            //
@@ -202,7 +278,7 @@ int main(int argc, char **argv) {
         create_transform({0.f, -0.5f, 0.f},  //
                          {0.f, 0.f, 0.f},    //
                          {1.f, 1.f, 1.f}),
-        material_t{white, math::vec3{0}});
+        create_lambertian(white));
     // top floor
     add_instance(                           //
         blases,                             //
@@ -212,7 +288,7 @@ int main(int argc, char **argv) {
         create_transform({0.f, 0.5f, 0.f},  //
                          {pi, 0.f, 0.f},    //
                          {1.f, 1.f, 1.f}),
-        material_t{white, math::vec3{0}});
+        create_lambertian(white));
     // left red floor
     add_instance(                             //
         blases,                               //
@@ -222,7 +298,7 @@ int main(int argc, char **argv) {
         create_transform({0.5f, 0.f, 0.f},    //
                          {0.f, 0.f, pi / 2},  //
                          {1.f, 1.f, 1.f}),
-        material_t{red, math::vec3{0}});
+        create_lambertian(red));
     // right green floor
     add_instance(                              //
         blases,                                //
@@ -232,7 +308,7 @@ int main(int argc, char **argv) {
         create_transform({-0.5f, 0.f, 0.f},    //
                          {0.f, 0.f, -pi / 2},  //
                          {1.f, 1.f, 1.f}),
-        material_t{green, math::vec3{0}});
+        create_lambertian(green));
     // back floor
     add_instance(                              //
         blases,                                //
@@ -242,17 +318,7 @@ int main(int argc, char **argv) {
         create_transform({0.f, 0.f, 0.5f},     //
                          {-pi / 2, 0.f, 0.f},  //
                          {1.f, 1.f, 1.f}),
-        material_t{white, math::vec3{0}});
-    // light
-    add_instance(                            //
-        blases,                              //
-        instances,                           //
-        instance_aabbs,                      //
-        materials,                           //
-        create_transform({0.f, 0.49f, 0.f},  //
-                         {pi, 0.f, 0.f},     //
-                         {0.3f, 0.3f, 0.3f}),
-        material_t{math::vec3{1}, math::vec3{10}});
+        create_lambertian(white));
   }
 
   // user model
@@ -276,18 +342,20 @@ int main(int argc, char **argv) {
         instances,       //
         instance_aabbs,  //
         materials,       //
-        transform, material_t{math::vec3{1, 1, 0}, math::vec3{0}});
+        transform,       //
+        create_metal(math::vec3{1.f}, 0.5f));
   }
+
   bvh::bvh_t tlas = bvh::build_bvh_sweep_sah(instance_aabbs);
 
-  image_t  image{640, 420};
-  camera_t camera{90.f, {0.f, 0.f, -1.1f}, {0, 0, 0}};
+  image_t  image{640, 640};
+  camera_t camera{90.f, {0.f, 0.f, -1.025f}, {0, 0, 0}};
   camera.set_dimentions(image._width, image._height);
 
   auto start = std::chrono::high_resolution_clock::now();
 
-  constexpr uint32_t max_spp    = 1024;
-  constexpr uint32_t max_bounce = 1000;
+  constexpr uint32_t max_spp    = 64;
+  constexpr uint32_t max_bounce = 100;
 
   render(16, image, [&](uint32_t x, uint32_t y) {
     random_t   random(x + (y * image._width));
@@ -300,13 +368,14 @@ int main(int argc, char **argv) {
       bvh::ray_t ray = bvh::ray_t::create(O, D);
 
       math::vec3 throughput{1.0f};
-      math::vec3 accumulated_radiance{0.0f};
+      math::vec3 color{0.0f};
 
       for (uint32_t bounce = 0; bounce < max_bounce; bounce++) {
         auto hit =
             tlas::intersect_tlas(tlas.nodes.data(), tlas.prim_indices.data(),
                                  instances.data(), blases.data(), ray);
         if (!hit.did_intersect()) {
+          color += throughput * background(ray);
           break;
         }
 
@@ -316,24 +385,72 @@ int main(int argc, char **argv) {
         math::vec3 local_normal = blases[instance.blas_index]
                                       .triangles[hit.blas_hit.prim_index]
                                       .normal();
-        math::mat3 world_to_local_3x3 = math::mat3(instance.inv_transform);
-        math::vec3 normal =
-            math::normalize(math::transpose(world_to_local_3x3) * local_normal);
+        math::vec3 normal = math::normalize(
+            math::transpose(math::mat3{instance.inv_transform}) * local_normal);
+        math::vec3 hit_pos = ray.origin + ray.direction * hit.blas_hit.t;
 
-        accumulated_radiance += throughput * material.emissive;
-
-        if (bounce > 3) {
-          if (russian_roulette_terminate(random, throughput)) break;
+        if (material.type == material_type_t::e_emissive) {
+          color += throughput * material.as.light.emission;
+          break;
         }
 
-        math::vec3 scatter_direction = random.unit_vector_on_hemisphere(normal);
+        if (russian_roulette_terminate(random, throughput)) break;
 
-        throughput *= material.color;
+        switch (material.type) {
+          case material_type_t::e_lambertian: {
+            math::vec3 scatter_direction =
+                random.unit_vector_on_hemisphere(normal);
+            ray = bvh::ray_t::create(hit_pos + normal * 0.0001f,
+                                     scatter_direction);
+            float cos_theta = math::dot(normal, scatter_direction);
+            throughput *= material.as.lambertian.albedo * 2.0f * cos_theta;
+          } break;
+          case material_type_t::e_metal: {
+            math::vec3 reflected =
+                math::reflect(ray.direction, normal) +
+                (material.as.metal.fuzz * random.unit_vector());
+            ray = bvh::ray_t::create(hit_pos + normal * 0.0001f, reflected);
+            throughput *= material.as.metal.albedo;
+            // terminate ray
+            if (!(math::dot(ray.direction, normal) > 0)) bounce = max_bounce;
+          } break;
+          case material_type_t::e_dielectric: {
+            bool       front_face     = math::dot(ray.direction, normal) < 0.0f;
+            math::vec3 face_normal    = front_face ? normal : -normal;
+            float      ri             = front_face
+                                            ? (1.f / material.as.dielectric.refraction_index)
+                                            : material.as.dielectric.refraction_index;
+            math::vec3 unit_direction = math::normalize(ray.direction);
+            float      cos_theta =
+                std::min(math::dot(-unit_direction, face_normal), 1.0f);
+            float sin_theta = std::sqrt(1.0f - cos_theta * cos_theta);
 
-        math::vec3 hit_pos = ray.origin + ray.direction * hit.blas_hit.t;
-        ray = bvh::ray_t::create(hit_pos + normal * 0.0001f, scatter_direction);
+            bool       cannot_refract = ri * sin_theta > 1.0f;
+            math::vec3 direction;
+            auto       reflectance = [](float cosine, float refraction_index) {
+              auto r0 = (1.0f - refraction_index) / (1.0f + refraction_index);
+              r0 = r0 * r0;
+              return r0 + (1.0f - r0) * std::pow((1.0f - cosine), 5);
+            };
+            bool will_reflect =
+                cannot_refract || reflectance(cos_theta, ri) > random.randf();
+            if (will_reflect) {
+              direction = math::reflect(unit_direction, face_normal);
+            } else {
+              direction = math::refract(unit_direction, face_normal, ri);
+            }
+            math::vec3 offset = face_normal * 0.0001f;
+            ray               = bvh::ray_t::create(
+                will_reflect ? hit_pos + offset : hit_pos - offset, direction);
+            throughput *= math::vec3(1.0f);
+          } break;
+          case material_type_t::e_emissive: {
+            // terminate ray
+            bounce = max_bounce;
+          } break;
+        }
       }
-      final_color += accumulated_radiance;
+      final_color += color;
     }
     return math::vec4{final_color / static_cast<float>(max_spp), 1.f};
   });
