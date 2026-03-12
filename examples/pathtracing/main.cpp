@@ -163,7 +163,6 @@ math::vec3 sample_light(scene_t &scene, bvh::bvh_t &tlas,
 
 constexpr uint32_t max_spp    = 2048;
 constexpr uint32_t max_bounce = 100;
-constexpr bool     nee        = true;
 
 math::vec3 get_world_normal(const scene_t          &scene,
                             const tlas::instance_t &instance,
@@ -185,7 +184,7 @@ bool is_specular(material_t material) {
 // TODO: make tlas traversal const
 // TODO: make scene const
 math::vec3 trace_path(scene_t &scene, bvh::bvh_t &tlas, bvh::ray_t ray,
-                      random_t &random) {
+                      bool nee, random_t &random) {
   math::vec3 throughput{1.0f}, color{0.0f};
   material_t prev_mat{.type = material_type_t::e_unknown};
 
@@ -230,10 +229,12 @@ math::vec3 trace_path(scene_t &scene, bvh::bvh_t &tlas, bvh::ray_t ray,
 }
 
 int main(int argc, char **argv) {
-  if (argc != 3) {
-    std::cerr << "Usage: [pathtracing] [model] [name]\n";
+  if (argc != 4) {
+    std::cerr << "Usage: [pathtracing] [model] [name] [nee]\n";
     exit(EXIT_FAILURE);
   }
+
+  bool nee = std::stoi(argv[3]);
 
   scene_t scene{};
   scene.background = [](const bvh::ray_t &ray) { return math::vec3{0}; };
@@ -347,7 +348,7 @@ int main(int argc, char **argv) {
            auto [O, D]    = camera.ray_gen(jitter_x, jitter_y);
            bvh::ray_t ray = bvh::ray_t::create(O, D);
 
-           math::vec3 color = trace_path(scene, tlas, ray, rng);
+           math::vec3 color = trace_path(scene, tlas, ray, nee, rng);
 
            return math::any(math::isnan(color)) ? math::vec3{0.f} : color;
          });
