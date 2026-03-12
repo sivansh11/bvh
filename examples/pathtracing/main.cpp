@@ -360,5 +360,13 @@ int main(int argc, char **argv) {
                    .count()
             << "ms" << "\n";  //
 
+  math::vec3 sum{0, 0, 0};
+  for (int j = image._height - 1; j >= 0; j--)
+    for (int i = 0; i < image._width; i++) {
+      sum += image.at(i, j);
+    }
+  std::cout << "pixel average: " << sum / float(image._width * image._height)
+            << '\n';
+
   return 0;
 }
