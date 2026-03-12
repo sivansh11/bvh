@@ -161,7 +161,6 @@ math::vec3 sample_light(scene_t &scene, bvh::bvh_t &tlas,
   return math::vec3{0.f};
 }
 
-constexpr uint32_t max_spp    = 2048;
 constexpr uint32_t max_bounce = 100;
 
 math::vec3 get_world_normal(const scene_t          &scene,
@@ -229,12 +228,13 @@ math::vec3 trace_path(scene_t &scene, bvh::bvh_t &tlas, bvh::ray_t ray,
 }
 
 int main(int argc, char **argv) {
-  if (argc != 4) {
-    std::cerr << "Usage: [pathtracing] [model] [name] [nee]\n";
+  if (argc != 5) {
+    std::cerr << "Usage: [pathtracing] [model] [name] [nee] [spp]\n";
     exit(EXIT_FAILURE);
   }
 
   bool nee = std::stoi(argv[3]);
+  uint32_t max_spp = std::stoi(argv[4]);
 
   scene_t scene{};
   scene.background = [](const bvh::ray_t &ray) { return math::vec3{0}; };
