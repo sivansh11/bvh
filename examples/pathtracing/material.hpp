@@ -72,17 +72,19 @@ inline material_t create_light(math::vec3 emission) {
   return material;
 }
 
-struct brdf_t {
-  math::vec3 value;
+struct scatter_sample_t {
+  math::vec3 brdf;
+  float      cosine;
   float      pdf;
   bvh::ray_t outgoing_ray;
   bool       active = true;
 };
 
-inline brdf_t sample(const material_t& material, const bvh::ray_t& incoming_ray,
-                     const math::vec3& hit_pos, const math::vec3& normal,
-                     random_t& random) {
-  brdf_t result{};
+inline scatter_sample_t sample(const material_t& material,
+                               const bvh::ray_t& incoming_ray,
+                               const math::vec3& hit_pos,
+                               const math::vec3& normal, random_t& random) {
+  scatter_sample_t result{};
   switch (material.type) {
     case material_type_t::e_lambertian: {
       math::vec3 scatter_direction = normal + random.unit_vector();
@@ -90,9 +92,9 @@ inline brdf_t sample(const material_t& material, const bvh::ray_t& incoming_ray,
       scatter_direction = math::normalize(scatter_direction);
       float cos_theta   = math::dot(normal, scatter_direction);
       if (!cos_theta) result.active = false;
-      result.pdf = cos_theta / math::pi<float>();
-      result.value =
-          material.as.lambertian.albedo * cos_theta / math::pi<float>();
+      result.brdf         = material.as.lambertian.albedo / math::pi<float>();
+      result.cosine       = cos_theta;
+      result.pdf          = cos_theta / math::pi<float>();
       result.outgoing_ray = bvh::ray_t::create(
           hit_pos + normal * epsilon, math::normalize(scatter_direction));
     } break;
@@ -100,8 +102,9 @@ inline brdf_t sample(const material_t& material, const bvh::ray_t& incoming_ray,
       math::vec3 reflected = math::reflect(incoming_ray.direction, normal);
       math::vec3 perturbed =
           reflected + (material.as.metal.fuzz * random.unit_vector());
+      result.brdf         = material.as.metal.albedo;
+      result.cosine       = 1.0f;
       result.pdf          = 1.0f;
-      result.value        = material.as.metal.albedo;
       result.outgoing_ray = bvh::ray_t::create(hit_pos + normal * epsilon,
                                                math::normalize(perturbed));
       if (!(math::dot(result.outgoing_ray.direction, normal) > 0))
@@ -132,8 +135,9 @@ inline brdf_t sample(const material_t& material, const bvh::ray_t& incoming_ray,
       math::vec3 offset   = face_normal * epsilon;
       result.outgoing_ray = bvh::ray_t::create(
           will_reflect ? hit_pos + offset : hit_pos - offset, direction);
-      result.value = math::vec3(1.0f);
-      result.pdf   = 1.0f;
+      result.brdf   = math::vec3(1.0f);
+      result.cosine = 1.0f;
+      result.pdf    = 1.0f;
     } break;
     case material_type_t::e_light: {
       result.active = false;

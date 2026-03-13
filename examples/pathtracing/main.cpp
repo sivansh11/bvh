@@ -112,7 +112,7 @@ bool russian_roulette_terminate(random_t &random, math::vec3 &throughput) {
 // TODO: make scene const
 math::vec3 sample_light(scene_t &scene, bvh::bvh_t &tlas,
                         const math::vec3 &hit_pos, const math::vec3 &normal,
-                        const material_t &material, bvh::ray_t ray,
+                        const scatter_sample_t &scatter_sample, bvh::ray_t ray,
                         random_t &random) {
   if (!scene.light_instance_indices.size()) return math::vec3{0.f};
   uint32_t    light_instance_index = scene.light_instance_indices[random.sample(
@@ -140,9 +140,9 @@ math::vec3 sample_light(scene_t &scene, bvh::bvh_t &tlas,
   float cos_light = math::dot(light_normal, -L);
 
   if (cos_theta > 0.0f && cos_light > 0.0f) {
-    bvh::ray_t shadow_ray = bvh::ray_t::create(hit_pos, L);
-    shadow_ray.tmin       = epsilon;
-    shadow_ray.tmax       = dist * (1.f - epsilon);
+    bvh::ray_t shadow_ray = bvh::ray_t::create(hit_pos + normal * epsilon, L);
+    shadow_ray.tmin       = 0;
+    shadow_ray.tmax       = dist - (epsilon * 10.f);
     auto shadow_hit       = tlas::intersect_tlas(
         tlas.nodes.data(), tlas.prim_indices.data(), scene.instances.data(),
         scene.blases.data(), shadow_ray);
@@ -152,10 +152,11 @@ math::vec3 sample_light(scene_t &scene, bvh::bvh_t &tlas,
       float light_selection_probability =
           1.0f /
           (light_blas.triangles.size() * scene.light_instance_indices.size());
-      float area = light_triangle.area();
-      math::vec3 brdf = material.as.lambertian.albedo / math::pi<float>();
-      return (brdf * scene.materials[light_instance_index].as.light.emission *
-              G * area / light_selection_probability);
+      float            area = light_triangle.area();
+      const math::vec3 emission =
+          scene.materials[light_instance_index].as.light.emission;
+      return (scatter_sample.brdf * emission * G * area /
+              light_selection_probability);
     }
   }
   return math::vec3{0.f};
@@ -211,17 +212,20 @@ math::vec3 trace_path(scene_t &scene, bvh::bvh_t &tlas, bvh::ray_t ray,
       break;
     }
 
+    scatter_sample_t scatter_sample =
+        sample(material, ray, hit_pos, normal, random);
+
     if (nee && material.type == material_type_t::e_lambertian) {
-      color += throughput * sample_light(scene, tlas, hit_pos, normal, material,
-                                         ray, random);
+      color += throughput * sample_light(scene, tlas, hit_pos, normal,
+                                         scatter_sample, ray, random);
     }
 
     if (russian_roulette_terminate(random, throughput)) break;
 
-    brdf_t brdf = sample(material, ray, hit_pos, normal, random);
-    if (!brdf.active) break;
-    ray = brdf.outgoing_ray;
-    throughput *= brdf.value / brdf.pdf;
+    if (!scatter_sample.active) break;
+    ray = scatter_sample.outgoing_ray;
+    throughput *=
+        scatter_sample.brdf * scatter_sample.cosine / scatter_sample.pdf;
     prev_mat = material;
   }
   return color;
@@ -349,6 +353,8 @@ int main(int argc, char **argv) {
            bvh::ray_t ray = bvh::ray_t::create(O, D);
 
            math::vec3 color = trace_path(scene, tlas, ray, nee, rng);
+
+           if (math::any(math::isnan(color))) throw std::runtime_error("nan");
 
            return math::any(math::isnan(color)) ? math::vec3{0.f} : color;
          });
