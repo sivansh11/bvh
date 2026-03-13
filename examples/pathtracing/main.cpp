@@ -142,7 +142,7 @@ math::vec3 sample_light(scene_t &scene, bvh::bvh_t &tlas,
   if (cos_theta > 0.0f && cos_light > 0.0f) {
     bvh::ray_t shadow_ray = bvh::ray_t::create(hit_pos, L);
     shadow_ray.tmin       = epsilon;
-    shadow_ray.tmax       = dist - epsilon;
+    shadow_ray.tmax       = dist * (1.f - epsilon);
     auto shadow_hit       = tlas::intersect_tlas(
         tlas.nodes.data(), tlas.prim_indices.data(), scene.instances.data(),
         scene.blases.data(), shadow_ray);
