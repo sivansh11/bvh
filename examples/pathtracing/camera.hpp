@@ -46,7 +46,6 @@ class camera_t {
     return {_from, direction};
   }
 
- private:
   uint32_t _width = 0, _height = 0;
 
   float      _vfov;

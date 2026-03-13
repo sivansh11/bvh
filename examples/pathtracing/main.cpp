@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -30,30 +31,6 @@
 #include "render.hpp"
 #include "scene.hpp"
 
-math::vec3 random_color_from_hit(uint32_t v) {
-  return {(((v + 1) * 123) % 255) / 255.f, (((v + 1) * 456) % 255) / 255.f,
-          (((v + 1) * 789) % 255) / 255.f};
-}
-
-math::vec4 turbo_color_map(float x) {
-  const math::vec4 kRedVec4 =
-      math::vec4(0.13572138, 4.61539260, -42.66032258, 132.13108234);
-  const math::vec4 kGreenVec4 =
-      math::vec4(0.09140261, 2.19418839, 4.84296658, -14.18503333);
-  const math::vec4 kBlueVec4 =
-      math::vec4(0.10667330, 12.64194608, -60.58204836, 110.36276771);
-  const math::vec2 kRedVec2   = math::vec2(-152.94239396, 59.28637943);
-  const math::vec2 kGreenVec2 = math::vec2(4.27729857, 2.82956604);
-  const math::vec2 kBlueVec2  = math::vec2(-89.90310912, 27.34824973);
-
-  x             = clamp(x, 0, 1);
-  math::vec4 v4 = math::vec4(1.0, x, x * x, x * x * x);
-  math::vec2 v2 = math::vec2{v4.z, v4.w} * v4.z;
-  return math::vec4(dot(v4, kRedVec4) + dot(v2, kRedVec2),
-                    dot(v4, kGreenVec4) + dot(v2, kGreenVec2),
-                    dot(v4, kBlueVec4) + dot(v2, kBlueVec2), 1);
-}
-
 math::mat4 create_transform(math::vec3 translation, math::vec3 rotation,
                             math::vec3 scale) {
   return math::translate(math::mat4{1.f}, translation) *
@@ -80,23 +57,6 @@ void add_instance(scene_t         &scene,
                                transformed_aabb, blas_index);
   scene.instance_aabbs.push_back(transformed_aabb);
   scene.materials.emplace_back(material);
-}
-
-math::mat4 get_model_fit_transform(const std::vector<tlas::blas_t> &blases,
-                                   uint32_t                         blas_index,
-                                   math::vec3 target_position,
-                                   math::vec3 rotation, float target_size) {
-  math::aabb_t original_aabb = blases[blas_index].bvh.nodes[0].aabb();
-  math::vec3   size          = original_aabb.max - original_aabb.min;
-  math::vec3   center        = (original_aabb.max + original_aabb.min) * 0.5f;
-  float        max_dim       = std::max({size.x, size.y, size.z});
-  float        scale_factor  = (max_dim > 0) ? (target_size / max_dim) : 1.0f;
-  math::mat4   transform = math::translate(math::mat4(1.0f), target_position);
-  transform              = transform * math::toMat4(math::quat(rotation));
-  transform              = math::scale(transform, math::vec3(scale_factor));
-  transform              = math::translate(transform, -center);
-
-  return transform;
 }
 
 bool russian_roulette_terminate(random_t &random, math::vec3 &throughput) {
@@ -237,7 +197,7 @@ int main(int argc, char **argv) {
     exit(EXIT_FAILURE);
   }
 
-  bool nee = std::stoi(argv[3]);
+  bool     nee     = std::stoi(argv[3]);
   uint32_t max_spp = std::stoi(argv[4]);
 
   scene_t scene{};
@@ -248,68 +208,8 @@ int main(int argc, char **argv) {
   const math::vec3 green{.12, .45, .15};
   const float      pi = math::pi<float>();
 
-  {
-    auto model = model::load_model_from_path("./plain.obj");
-    for (auto &mesh : model.meshes) {
-      auto          triangles = model::create_triangles_from_mesh(mesh);
-      auto          aabbs     = math::aabbs_from_triangles(triangles);
-      tlas::blas_t &blas      = scene.blases.emplace_back(
-          bvh::build_bvh_sweep_sah(aabbs), std::move(triangles));
-    }
+  camera_t camera{90.f, {0, 1, 1.75}, {0, 1, 0}};
 
-    // light
-    add_instance(  //
-        scene,
-        create_transform({0.f, 0.49f, 0.f},  //
-                         {pi, 0.f, 0.f},     //
-                         {0.3f, 0.3f, 0.3f}),
-        create_light(math::vec3{15.f}));
-
-    // bottom floor
-    add_instance(  //
-        scene,
-        create_transform({0.f, -0.5f, 0.f},  //
-                         {0.f, 0.f, 0.f},    //
-                         {1.f, 1.f, 1.f}),
-        create_lambertian(white));
-    // top floor
-    add_instance(  //
-        scene,
-        create_transform({0.f, 0.5f, 0.f},  //
-                         {pi, 0.f, 0.f},    //
-                         {1.f, 1.f, 1.f}),
-        create_lambertian(white));
-    // left red floor
-    add_instance(  //
-        scene,
-        create_transform({0.5f, 0.f, 0.f},    //
-                         {0.f, 0.f, pi / 2},  //
-                         {1.f, 1.f, 1.f}),
-        create_lambertian(red));
-    // right green floor
-    add_instance(  //
-        scene,
-        create_transform({-0.5f, 0.f, 0.f},    //
-                         {0.f, 0.f, -pi / 2},  //
-                         {1.f, 1.f, 1.f}),
-        create_lambertian(green));
-    // back floor
-    add_instance(  //
-        scene,
-        create_transform({0.f, 0.f, 0.5f},     //
-                         {-pi / 2, 0.f, 0.f},  //
-                         {1.f, 1.f, 1.f}),
-        create_lambertian(white));
-
-    add_instance(  //
-        scene,
-        create_transform({0.f, 0.f, -1.5f},   //
-                         {pi / 2, 0.f, 0.f},  //
-                         {1.f, 1.f, 1.f}),
-        create_light(math::vec3{3}));
-  }
-
-  // user model
   {
     auto model = model::load_model_from_path(argv[1]);
     for (auto &mesh : model.meshes) {
@@ -317,18 +217,60 @@ int main(int argc, char **argv) {
       auto          aabbs     = math::aabbs_from_triangles(triangles);
       tlas::blas_t &blas      = scene.blases.emplace_back(
           bvh::build_bvh_sweep_sah(aabbs), std::move(triangles));
-    }
-    uint32_t   blas_index = scene.blases.size() - 1;
-    math::mat4 transform  = get_model_fit_transform(scene.blases,         //
-                                                    blas_index,           //
-                                                    {0.f, -0.2f, -0.2f},  //
-                                                    {0.f, pi / 2, 0.f},   //
-                                                    0.6f);
 
-    add_instance(  //
-        scene,
-        transform,  //
-        create_lambertian(math::vec3{0.9}));
+      bool is_emissive = std::ranges::any_of(
+          mesh.material_description.texture_infos,
+          [](model::texture_info_t info) {
+            return info.texture_type == model::texture_type_t::e_emissive_color;
+          });
+      if (is_emissive) {
+        auto emissive =
+            *std::find_if(mesh.material_description.texture_infos.begin(),
+                          mesh.material_description.texture_infos.end(),
+                          [](model::texture_info_t info) {
+                            return info.texture_type ==
+                                   model::texture_type_t::e_emissive_color;
+                          });
+        if (emissive.emissive_color == math::vec3{0}) is_emissive = false;
+      }
+
+      auto transform = create_transform({0, 0, 0}, {0, 0, 0}, {1, 1, 1});
+      std::cout << mesh.name << ' ' << is_emissive << '\n';
+      if (is_emissive) {
+        auto emissive =
+            *std::find_if(mesh.material_description.texture_infos.begin(),
+                          mesh.material_description.texture_infos.end(),
+                          [](model::texture_info_t info) {
+                            return info.texture_type ==
+                                   model::texture_type_t::e_emissive_color;
+                          });
+        // add_instance(scene, transform,
+        // create_light(emissive.emissive_color));
+        add_instance(scene, transform, create_lambertian(math::vec3{1.f}));
+      } else {
+        auto diffuse =
+            *std::find_if(mesh.material_description.texture_infos.begin(),
+                          mesh.material_description.texture_infos.end(),
+                          [](model::texture_info_t info) {
+                            return info.texture_type ==
+                                   model::texture_type_t::e_diffuse_color;
+                          });
+        add_instance(scene, transform,
+                     create_lambertian(diffuse.diffuse_color));
+      }
+    }
+  }
+  {
+    auto model = model::load_model_from_path("./sphere.obj");
+    for (auto &mesh : model.meshes) {
+      auto          triangles = model::create_triangles_from_mesh(mesh);
+      auto          aabbs     = math::aabbs_from_triangles(triangles);
+      tlas::blas_t &blas      = scene.blases.emplace_back(
+          bvh::build_bvh_sweep_sah(aabbs), std::move(triangles));
+      add_instance(scene,
+                   create_transform({0, 1, 0}, {0, 0, 0}, {0.1, 0.1, 0.1}),
+                   create_light(math::vec3{20}));
+    }
   }
 
   bvh::bvh_t tlas = bvh::build_bvh_sweep_sah(scene.instance_aabbs);
@@ -339,7 +281,6 @@ int main(int argc, char **argv) {
 
   image_t image{640, 640};
   // image_t  image{1920, 1200};
-  camera_t camera{90.f, {0.f, 0.f, -1.025f}, {0, 0, 0}};
   camera.set_dimentions(image._width, image._height);
 
   auto start = std::chrono::high_resolution_clock::now();

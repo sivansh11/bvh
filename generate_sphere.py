@@ -65,4 +65,4 @@ def create_icosphere(subdivisions=2, filename="sphere.obj"):
 
 if __name__ == "__main__":
     # Increase subdivisions for a smoother sphere (e.g., 3 or 4)
-    create_icosphere(subdivisions=7)
+    create_icosphere(subdivisions=3)
