@@ -249,9 +249,8 @@ int main(int argc, char **argv) {
                             return info.texture_type ==
                                    model::texture_type_t::e_emissive_color;
                           });
-        // add_instance(scene, transform,
-        // create_light(emissive.emissive_color));
-        add_instance(scene, transform, create_lambertian(math::vec3{1.f}));
+        add_instance(scene, transform, create_light(emissive.emissive_color));
+        // add_instance(scene, transform, create_lambertian(math::vec3{1.f}));
       } else {
         auto diffuse =
             *std::find_if(mesh.material_description.texture_infos.begin(),
