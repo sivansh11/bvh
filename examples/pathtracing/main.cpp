@@ -5,6 +5,7 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <random>
 #include <stdexcept>
@@ -75,21 +76,30 @@ math::vec3 sample_light(scene_t &scene, bvh::bvh_t &tlas,
                         const scatter_sample_t &scatter_sample, bvh::ray_t ray,
                         random_t &random) {
   if (!scene.light_instance_indices.size()) return math::vec3{0.f};
-  uint32_t    light_instance_index = scene.light_instance_indices[random.sample(
-      scene.light_instance_indices.size())];
-  const auto &light_instance       = scene.instances[light_instance_index];
-  const auto &light_blas           = scene.blases[light_instance.blas_index];
-  uint32_t    triangle_index       = random.sample(light_blas.triangles.size());
-  auto        light_triangle       = light_blas.triangles[triangle_index];
-  light_triangle.v0 =
-      light_instance.transform * math::vec4{light_triangle.v0, 1.f};
-  light_triangle.v1 =
-      light_instance.transform * math::vec4{light_triangle.v1, 1.f};
-  light_triangle.v2 =
-      light_instance.transform * math::vec4{light_triangle.v2, 1.f};
 
-  math::vec3 p_world      = random.sample_triangle(light_triangle);
-  math::vec3 light_normal = light_triangle.normal();
+  float sample = random.randf();
+  auto  itr = std::lower_bound(scene.light_cdfs.begin(), scene.light_cdfs.end(),
+                               sample);
+  uint32_t light_record_index = std::distance(scene.light_cdfs.begin(), itr);
+  light_record_index =
+      std::min(light_record_index, (uint32_t)scene.light_cdfs.size() - 1);
+  const light_record_t &light_record = scene.light_records[light_record_index];
+  float                 discrete_probability =
+      light_record_index == 0 ? scene.light_cdfs[0]
+                                              : scene.light_cdfs[light_record_index] -
+                                    scene.light_cdfs[light_record_index - 1];
+  float       pdf = discrete_probability * light_record.inv_area;
+  uint32_t    light_instance_index = light_record.instance_index;
+  const auto &instance             = scene.instances[light_instance_index];
+  const auto &blas                 = scene.blases[instance.blas_index];
+  uint32_t    triangle_index       = light_record.triangle_index;
+  auto        triangle             = blas.triangles[triangle_index];
+  triangle.v0 = instance.transform * math::vec4{triangle.v0, 1.f};
+  triangle.v1 = instance.transform * math::vec4{triangle.v1, 1.f};
+  triangle.v2 = instance.transform * math::vec4{triangle.v2, 1.f};
+
+  math::vec3 p_world      = random.sample_triangle(triangle);
+  math::vec3 light_normal = triangle.normal();
 
   math::vec3 L       = p_world - hit_pos;
   float      dist_sq = math::length2(L);
@@ -102,21 +112,16 @@ math::vec3 sample_light(scene_t &scene, bvh::bvh_t &tlas,
   if (cos_theta > 0.0f && cos_light > 0.0f) {
     bvh::ray_t shadow_ray = bvh::ray_t::create(hit_pos + normal * epsilon, L);
     shadow_ray.tmin       = 0;
-    shadow_ray.tmax       = dist - (epsilon * 10.f);
+    shadow_ray.tmax       = dist - (epsilon * 100.f);
     auto shadow_hit       = tlas::intersect_tlas(
         tlas.nodes.data(), tlas.prim_indices.data(), scene.instances.data(),
         scene.blases.data(), shadow_ray);
 
     if (!shadow_hit.did_intersect()) {
-      float G = (cos_theta * cos_light) / dist_sq;
-      float light_selection_probability =
-          1.0f /
-          (light_blas.triangles.size() * scene.light_instance_indices.size());
-      float            area = light_triangle.area();
+      float            G = (cos_theta * cos_light) / dist_sq;
       const math::vec3 emission =
           scene.materials[light_instance_index].as.light.emission;
-      return (scatter_sample.brdf * emission * G * area /
-              light_selection_probability);
+      return (scatter_sample.brdf * emission * G) / pdf;
     }
   }
   return math::vec3{0.f};
@@ -278,6 +283,31 @@ int main(int argc, char **argv) {
   for (uint32_t i = 0; i < scene.materials.size(); i++)
     if (scene.materials[i].type == material_type_t::e_light)
       scene.light_instance_indices.push_back(i);
+
+  float total_power = 0.f;
+  for (uint32_t i = 0; i < scene.materials.size(); i++) {
+    if (scene.materials[i].type == material_type_t::e_light) {
+      const auto       &instance = scene.instances[i];
+      const auto       &blas     = scene.blases[instance.blas_index];
+      const math::vec3 &emission = scene.materials[i].as.light.emission;
+      const float luminance      = (emission.x + emission.y + emission.z) / 3.f;
+      for (uint32_t triangle_index = 0; triangle_index < blas.triangles.size();
+           triangle_index++) {
+        auto triangle = blas.triangles[triangle_index];
+        triangle.v0   = instance.transform * math::vec4{triangle.v0, 1.f};
+        triangle.v1   = instance.transform * math::vec4{triangle.v1, 1.f};
+        triangle.v2   = instance.transform * math::vec4{triangle.v2, 1.f};
+        float area    = triangle.area();
+        float power   = area * luminance;
+        total_power += power;
+        scene.light_records.emplace_back(i, triangle_index, 1.f / area);
+        scene.light_cdfs.push_back(total_power);
+      }
+    }
+  }
+  for (float &val : scene.light_cdfs) {
+    val /= total_power;
+  }
 
   image_t image{640, 640};
   // image_t  image{1920, 1200};
