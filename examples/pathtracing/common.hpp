@@ -1,6 +1,6 @@
 #ifndef COMMON_HPP
 #define COMMON_HPP
 
-constexpr float epsilon = 0.000001f;
+constexpr float epsilon = 0.001f;
 
 #endif

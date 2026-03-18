@@ -86,11 +86,11 @@ struct image_t {
     auto image = std::make_shared<image_t>(static_cast<uint32_t>(width),
                                            static_cast<uint32_t>(height));
     for (uint32_t i = 0; i < width * height; i++) {
-      image->_p_pixels[i] = math::vec3{
-          static_cast<float>(data[i * 3 + 0]) / 255.f,
-          static_cast<float>(data[i * 3 + 1]) / 255.f,
-          static_cast<float>(data[i * 3 + 2]) / 255.f,
-      };
+      float r             = static_cast<float>(data[i * 3 + 0]) / 255.f;
+      float g             = static_cast<float>(data[i * 3 + 1]) / 255.f;
+      float b             = static_cast<float>(data[i * 3 + 2]) / 255.f;
+      image->_p_pixels[i] = math::vec3{math::pow(r, 2.2f), math::pow(g, 2.2f),
+                                       math::pow(b, 2.2f)};
     }
     stbi_image_free(data);
     return image;

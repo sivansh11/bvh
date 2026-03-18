@@ -397,45 +397,36 @@ int main(int argc, char **argv) {
   const math::vec3 green{.12, .45, .15};
   const float      pi = math::pi<float>();
 
-  camera_t camera{60.f, {0, 1.5, -4}, {0, 0.5, 0}};
-
+  math::vec3 from = {750, 600, 500};
+  // math::vec3 from = {750, 600, 0};
+  // math::vec3 from = {750, 100, 500};
+  math::vec3 to = from + math::vec3{-1, 0, 0};
+  camera_t   camera{90.f, from, to};
   {
-    auto sphere_model = model::load_model_from_path("./sphere.obj");
-    for (auto &mesh : sphere_model.meshes) {
+    auto model = model::load_model_from_path("./sphere.obj");
+    for (auto &mesh : model.meshes) {
       auto triangles = model::create_triangles_from_mesh(mesh);
       auto aabbs     = math::aabbs_from_triangles(triangles);
       scene.blases.emplace_back(bvh::build_bvh_sweep_sah(aabbs), triangles);
-
       uint32_t mesh_index = scene.raw_meshes.size();
       scene.raw_meshes.push_back(mesh);
-
-      auto diffuse_tex = get_diffuse_texture(mesh.material_description);
-      add_instance(scene,
-                   create_transform({-1.5, 2.5, 1}, {0, 0, 0}, {0.7, 0.7, 0.7}),
-                   create_light(math::vec3{5.f, 5.f, 5.f}), mesh_index);
       add_instance(
-          scene, create_transform({1.5, 2.5, 1}, {0, 0, 0}, {0.05, 0.05, 0.05}),
-          create_light(math::vec3{800.f, 800.f, 800.f}), mesh_index);
-      add_instance(scene,
-                   create_transform({-1.0, 0, 0}, {0, 0, 0}, {0.8, 0.8, 0.8}),
-                   create_metal(math::vec3{0.9, 0.1, 0.1}, 0.3f),
-                   mesh_index);  // Glossy Red
-      add_instance(scene,
-                   create_transform({1.0, 0, 0}, {0, 0, 0}, {0.8, 0.8, 0.8}),
-                   create_lambertian(diffuse_tex), mesh_index);
+          scene,
+          create_transform({1000, 5000, -750}, {0, 0, 0}, {1000, 1000, 1000}),
+          create_light(math::vec3{1000.f}), mesh_index);
     }
   }
-
   {
-    auto plain_model = model::load_model_from_path("./plain.obj");
-    for (auto &mesh : plain_model.meshes) {
+    auto model = model::load_model_from_path(argv[1]);
+    for (auto &mesh : model.meshes) {
+      std::cout << mesh.name << '\n';
       auto triangles = model::create_triangles_from_mesh(mesh);
       auto aabbs     = math::aabbs_from_triangles(triangles);
       scene.blases.emplace_back(bvh::build_bvh_sweep_sah(aabbs), triangles);
       uint32_t mesh_index = scene.raw_meshes.size();
       scene.raw_meshes.push_back(mesh);
       auto diffuse_tex = get_diffuse_texture(mesh.material_description);
-      add_instance(scene, create_transform({0, -0.8, 0}, {0, 0, 0}, {5, 1, 5}),
+      add_instance(scene, create_transform({0, 0, 0}, {0, 0, 0}, {1, 1, 1}),
                    create_lambertian(diffuse_tex), mesh_index);
     }
   }
