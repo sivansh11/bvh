@@ -112,14 +112,18 @@ math::vec3 sample_light(scene_t          &scene,     //
   float cos_light = math::dot(light_normal, -wi);
 
   if (cos_theta > 0.0f && cos_light > 0.0f) {
-    bvh::ray_t shadow_ray = bvh::ray_t::create(hit_pos, wi);
-    shadow_ray.tmin       = epsilon;
-    shadow_ray.tmax       = dist - epsilon * 2.f;
-    auto shadow_hit       = tlas::intersect_tlas(
+    math::vec3 offset_normal = math::dot(wi, normal) > 0.f ? normal : -normal;
+    math::vec3 shadow_origin = hit_pos + offset_normal * epsilon;
+    bvh::ray_t shadow_ray    = bvh::ray_t::create(shadow_origin, wi);
+    shadow_ray.tmin          = epsilon;
+    shadow_ray.tmax          = dist * 0.999f;
+    auto shadow_hit          = tlas::intersect_tlas(
         tlas.nodes.data(), tlas.prim_indices.data(), scene.instances.data(),
         scene.blases.data(), shadow_ray);
-
-    if (!shadow_hit.did_intersect()) {
+    bool is_occluded = shadow_hit.did_intersect() &&
+                       !(shadow_hit.instance_index == light_instance_index &&
+                         shadow_hit.blas_hit.prim_index == triangle_index);
+    if (!is_occluded) {
       math::vec3 emission = scene.materials[light_instance_index].emitted(
           random, -wi, light_normal, uv);
       math::vec3 brdf = material.evaluate(random, wi, wo, normal, uv);
@@ -184,14 +188,18 @@ light_sample_t sample_light_mis(scene_t          &scene,     //
   float cos_light = math::dot(light_normal, -wi);
 
   if (cos_theta > 0.0f && cos_light > 0.0f) {
-    bvh::ray_t shadow_ray = bvh::ray_t::create(hit_pos, wi);
-    shadow_ray.tmin       = epsilon;
-    shadow_ray.tmax       = dist - epsilon * 2.f;
-    auto shadow_hit       = tlas::intersect_tlas(
+    math::vec3 offset_normal = math::dot(wi, normal) > 0.f ? normal : -normal;
+    math::vec3 shadow_origin = hit_pos + offset_normal * epsilon;
+    bvh::ray_t shadow_ray    = bvh::ray_t::create(shadow_origin, wi);
+    shadow_ray.tmin          = epsilon;
+    shadow_ray.tmax          = dist * 0.999f;
+    auto shadow_hit          = tlas::intersect_tlas(
         tlas.nodes.data(), tlas.prim_indices.data(), scene.instances.data(),
         scene.blases.data(), shadow_ray);
-
-    if (!shadow_hit.did_intersect()) {
+    bool is_occluded = shadow_hit.did_intersect() &&
+                       !(shadow_hit.instance_index == light_instance_index &&
+                         shadow_hit.blas_hit.prim_index == triangle_index);
+    if (!is_occluded) {
       math::vec3 emission = scene.materials[light_instance_index].emitted(
           random, -wi, light_normal, uv);
       math::vec3 brdf      = material.evaluate(random, wi, wo, normal, uv);
