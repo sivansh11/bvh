@@ -6,6 +6,7 @@
 #include "bvh/tlas.hpp"
 #include "bvh/traversal.hpp"
 #include "material.hpp"
+#include "model/model.hpp"
 
 struct light_record_t {
   uint32_t instance_index;
@@ -27,7 +28,9 @@ struct scene_t {
   std::vector<light_record_t>       light_records;
   std::vector<float>                light_cdfs;
   std::vector<instance_light_map_t> instance_light_maps;
-  math::vec3 (*background)(const bvh::ray_t &ray);
+  std::vector<model::raw_mesh_t>    raw_meshes;
+  std::vector<uint32_t>             instance_to_mesh_index;
+  math::vec3 (*background)(const bvh::ray_t& ray);
 };
 
 #endif

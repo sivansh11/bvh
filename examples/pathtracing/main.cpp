@@ -43,7 +43,7 @@ math::mat4 create_transform(math::vec3 translation,  //
 
 void add_instance(scene_t         &scene,
                   const math::mat4 transform,  //
-                  const material_t material) {
+                  const material_t material, uint32_t mesh_index) {
   uint32_t     blas_index = scene.blases.size() - 1;
   math::aabb_t blas_aabb  = scene.blases[blas_index].bvh.nodes[0].aabb();
   math::aabb_t transformed_aabb{};
@@ -60,6 +60,7 @@ void add_instance(scene_t         &scene,
                                transformed_aabb, blas_index);
   scene.instance_aabbs.push_back(transformed_aabb);
   scene.materials.emplace_back(material);
+  scene.instance_to_mesh_index.push_back(mesh_index);
 }
 
 bool russian_roulette_terminate(random_t &random, math::vec3 &throughput) {
@@ -79,7 +80,7 @@ math::vec3 sample_light(scene_t          &scene,     //
                         const math::vec3 &normal,    //
                         const math::vec3 &wo,        //
                         const material_t &material,  //
-                        random_t         &random) {
+                        random_t &random, const math::vec2 &uv) {
   if (!scene.light_instance_indices.size()) return math::vec3{0.f};
 
   float sample = random.randf();
@@ -120,8 +121,8 @@ math::vec3 sample_light(scene_t          &scene,     //
 
     if (!shadow_hit.did_intersect()) {
       math::vec3 emission = scene.materials[light_instance_index].emitted(
-          random, -wi, light_normal);
-      math::vec3 brdf = material.evaluate(random, wi, wo, normal);
+          random, -wi, light_normal, uv);
+      math::vec3 brdf = material.evaluate(random, wi, wo, normal, uv);
       float      G    = (cos_theta * cos_light) / dist_sq;
       float      pdf  = discrete_probability * light_record.inv_area;
       return (brdf * emission * G) / pdf;
@@ -151,7 +152,7 @@ light_sample_t sample_light_mis(scene_t          &scene,     //
                                 const math::vec3 &normal,    //
                                 const math::vec3 &wo,        //
                                 const material_t &material,  //
-                                random_t         &random) {
+                                random_t &random, const math::vec2 &uv) {
   if (!scene.light_instance_indices.size()) return {{}, 0.f};
 
   float sample = random.randf();
@@ -192,12 +193,12 @@ light_sample_t sample_light_mis(scene_t          &scene,     //
 
     if (!shadow_hit.did_intersect()) {
       math::vec3 emission = scene.materials[light_instance_index].emitted(
-          random, -wi, light_normal);
-      math::vec3 brdf      = material.evaluate(random, wi, wo, normal);
+          random, -wi, light_normal, uv);
+      math::vec3 brdf      = material.evaluate(random, wi, wo, normal, uv);
       float      G         = (cos_theta * cos_light) / dist_sq;
       float      pdf_area  = discrete_probability * light_record.inv_area;
       float      pdf_light = pdf_area * (dist_sq / cos_light);
-      float      pdf_brdf  = material.pdf(random, wi, wo, normal);
+      float      pdf_brdf  = material.pdf(random, wi, wo, normal, uv);
       float      weight    = power_huristic(pdf_light, pdf_brdf);
       math::vec3 radiance  = (brdf * emission * G * weight) / pdf_area;
       return {radiance, pdf_light};
@@ -215,6 +216,41 @@ math::vec3 get_world_normal(const scene_t          &scene,
   math::vec3 normal = math::normalize(
       math::transpose(math::mat3{instance.inv_transform}) * local_normal);
   return normal;
+}
+
+inline model::vertex_t interpolate_vertex(const scene_t          &scene,
+                                          const tlas::instance_t &instance,
+                                          const tlas::hit_t      &hit) {
+  uint32_t    mesh_index = scene.instance_to_mesh_index[hit.instance_index];
+  const auto &raw_mesh   = scene.raw_meshes[mesh_index];
+  uint32_t    tri_idx    = hit.blas_hit.prim_index;
+  uint32_t    i0         = raw_mesh.indices[tri_idx * 3 + 0];
+  uint32_t    i1         = raw_mesh.indices[tri_idx * 3 + 1];
+  uint32_t    i2         = raw_mesh.indices[tri_idx * 3 + 2];
+  const auto &v0         = raw_mesh.vertices[i0];
+  const auto &v1         = raw_mesh.vertices[i1];
+  const auto &v2         = raw_mesh.vertices[i2];
+  float       u          = hit.blas_hit.u;
+  float       v          = hit.blas_hit.v;
+  float       w          = 1.0f - u - v;
+
+  model::vertex_t interpolated;
+  interpolated.position = w * v0.position + u * v1.position + v * v2.position;
+  interpolated.normal   = w * v0.normal + u * v1.normal + v * v2.normal;
+  interpolated.uv       = w * v0.uv + u * v1.uv + v * v2.uv;
+  interpolated.tangent  = w * v0.tangent + u * v1.tangent + v * v2.tangent;
+  interpolated.bi_tangent =
+      w * v0.bi_tangent + u * v1.bi_tangent + v * v2.bi_tangent;
+
+  interpolated.position =
+      instance.transform * math::vec4{interpolated.position, 1.f};
+  math::mat3 normal_mat = math::transpose(math::mat3{instance.inv_transform});
+  interpolated.normal   = math::normalize(normal_mat * interpolated.normal);
+  interpolated.tangent  = math::normalize(normal_mat * interpolated.tangent);
+  interpolated.bi_tangent =
+      math::normalize(normal_mat * interpolated.bi_tangent);
+
+  return interpolated;
 }
 
 // TODO: make bvh traversal const
@@ -250,9 +286,11 @@ math::vec3 trace_path(scene_t    &scene,  //
                       bool        mis,    //
                       random_t   &random) {
   math::vec3 throughput{1.0f}, radiance{0.0f};
-  material_t prev_mat{.type = material_type_t::e_unknown};
+  material_t prev_mat;
+  prev_mat.type            = material_type_t::e_unknown;
   float      last_brdf_pdf = 0.f;
   math::vec3 last_hit_pos  = ray.origin;
+  math::vec2 last_uv{0.f, 0.f};
 
   // number of bounces doesnt matter since I do rr based termination
   for (uint32_t bounce = 0; bounce < 10000u; bounce++) {
@@ -265,11 +303,11 @@ math::vec3 trace_path(scene_t    &scene,  //
       break;
     }
 
-    const auto &instance = scene.instances[hit.instance_index];
-    const auto &material = scene.materials[hit.instance_index];
-    math::vec3  normal   = get_world_normal(scene, instance, hit);
-    math::vec3  hit_pos  = ray.origin + ray.direction * hit.blas_hit.t;
-    math::vec3  wo       = -ray.direction;
+    const auto     &instance   = scene.instances[hit.instance_index];
+    const auto     &material   = scene.materials[hit.instance_index];
+    model::vertex_t hit_vertex = interpolate_vertex(scene, instance, hit);
+    math::vec3      hit_pos    = ray.origin + ray.direction * hit.blas_hit.t;
+    math::vec3      wo         = -ray.direction;
 
     if (material.type == material_type_t::e_light) {
       float weight = 1.f;
@@ -290,21 +328,26 @@ math::vec3 trace_path(scene_t    &scene,  //
         }
       }
 
-      radiance += throughput * material.emitted(random, wo, normal) * weight;
+      radiance +=
+          throughput *
+          material.emitted(random, wo, hit_vertex.normal, hit_vertex.uv) *
+          weight;
       break;
     }
 
     auto [should_continue, scatter_sample] =
-        material.sample(random, wo, normal);
+        material.sample(random, wo, hit_vertex.normal, hit_vertex.uv);
 
     if (nee && !material.is_specular()) {
       if (!mis) {
         // pure nee
-        radiance += throughput * sample_light(scene, tlas, hit_pos, normal, wo,
-                                              material, random);
+        radiance +=
+            throughput * sample_light(scene, tlas, hit_pos, hit_vertex.normal,
+                                      wo, material, random, hit_vertex.uv);
       } else {
-        light_sample_t light_sample = sample_light_mis(
-            scene, tlas, hit_pos, normal, wo, material, random);
+        light_sample_t light_sample =
+            sample_light_mis(scene, tlas, hit_pos, hit_vertex.normal, wo,
+                             material, random, hit_vertex.uv);
         radiance += throughput * light_sample.radiance;
       }
     }
@@ -315,11 +358,14 @@ math::vec3 trace_path(scene_t    &scene,  //
     if (russian_roulette_terminate(random, throughput)) break;
 
     math::vec3 offset_normal =
-        math::dot(scatter_sample.wi, normal) > 0.f ? normal : -normal;
+        math::dot(scatter_sample.wi, hit_vertex.normal) > 0.f
+            ? hit_vertex.normal
+            : -hit_vertex.normal;
     ray           = bvh::ray_t::create(hit_pos + offset_normal * epsilon,
                                        scatter_sample.wi);
     last_brdf_pdf = scatter_sample.pdf;
     last_hit_pos  = hit_pos;
+    last_uv       = hit_vertex.uv;
     prev_mat      = material;
   }
   return radiance;
@@ -351,18 +397,24 @@ int main(int argc, char **argv) {
       auto triangles = model::create_triangles_from_mesh(mesh);
       auto aabbs     = math::aabbs_from_triangles(triangles);
       scene.blases.emplace_back(bvh::build_bvh_sweep_sah(aabbs), triangles);
+
+      uint32_t mesh_index = scene.raw_meshes.size();
+      scene.raw_meshes.push_back(mesh);
+
+      auto diffuse_tex = get_diffuse_texture(mesh.material_description);
       add_instance(scene,
                    create_transform({-1.5, 2.5, 1}, {0, 0, 0}, {0.7, 0.7, 0.7}),
-                   create_light(math::vec3{5.f, 5.f, 5.f}));
+                   create_light(math::vec3{5.f, 5.f, 5.f}), mesh_index);
       add_instance(
           scene, create_transform({1.5, 2.5, 1}, {0, 0, 0}, {0.05, 0.05, 0.05}),
-          create_light(math::vec3{800.f, 800.f, 800.f}));
-      add_instance(
-          scene, create_transform({-1.0, 0, 0}, {0, 0, 0}, {0.8, 0.8, 0.8}),
-          create_metal(math::vec3{0.9, 0.1, 0.1}, 0.3f));  // Glossy Red
-      add_instance(
-          scene, create_transform({1.0, 0, 0}, {0, 0, 0}, {0.8, 0.8, 0.8}),
-          create_lambertian(math::vec3{0.1, 0.9, 0.1}));  // Diffuse Blue
+          create_light(math::vec3{800.f, 800.f, 800.f}), mesh_index);
+      add_instance(scene,
+                   create_transform({-1.0, 0, 0}, {0, 0, 0}, {0.8, 0.8, 0.8}),
+                   create_metal(math::vec3{0.9, 0.1, 0.1}, 0.3f),
+                   mesh_index);  // Glossy Red
+      add_instance(scene,
+                   create_transform({1.0, 0, 0}, {0, 0, 0}, {0.8, 0.8, 0.8}),
+                   create_lambertian(diffuse_tex), mesh_index);
     }
   }
 
@@ -372,8 +424,11 @@ int main(int argc, char **argv) {
       auto triangles = model::create_triangles_from_mesh(mesh);
       auto aabbs     = math::aabbs_from_triangles(triangles);
       scene.blases.emplace_back(bvh::build_bvh_sweep_sah(aabbs), triangles);
+      uint32_t mesh_index = scene.raw_meshes.size();
+      scene.raw_meshes.push_back(mesh);
+      auto diffuse_tex = get_diffuse_texture(mesh.material_description);
       add_instance(scene, create_transform({0, -0.8, 0}, {0, 0, 0}, {5, 1, 5}),
-                   create_lambertian(math::vec3{0.7, 0.7, 0.7}));
+                   create_lambertian(diffuse_tex), mesh_index);
     }
   }
 
