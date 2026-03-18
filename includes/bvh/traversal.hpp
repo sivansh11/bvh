@@ -2,6 +2,7 @@
 #define BVH_TRAVERSAL_HPP
 
 #include "bvh.hpp"
+#include "glm/geometric.hpp"
 #include "math/math.hpp"
 
 namespace bvh {
@@ -40,7 +41,7 @@ struct ray_t {
   static ray_t create(math::vec3 origin, math::vec3 direction) {
     ray_t ray;
     ray.origin    = origin;
-    ray.direction = direction;
+    ray.direction = math::normalize(direction);
     ray.inverse_direction =
         math::vec3(safe_inverse(direction.x), safe_inverse(direction.y),
                    safe_inverse(direction.z));
