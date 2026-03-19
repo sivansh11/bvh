@@ -14,12 +14,14 @@ struct random_t {
   float randf() { return dist(rng); }
 
   math::vec3 unit_vector() {
-    while (true) {
-      auto p     = math::vec3{randf() * 2.f - 1.f, randf() * 2.f - 1.f,
-                          randf() * 2.f - 1.f};
-      auto lensq = math::length2(p);
-      if (1e-160 < lensq && lensq <= 1) return p / math::sqrt(lensq);
-    }
+    float u1 = randf();
+    float u2 = randf();
+
+    float z   = 1.0f - 2.0f * u1;
+    float r   = std::sqrt(std::max(0.0f, 1.0f - z * z));
+    float phi = 2.0f * math::pi<float>() * u2;
+
+    return math::vec3{r * std::cos(phi), r * std::sin(phi), z};
   }
 
   math::vec3 unit_vector_on_hemisphere(const math::vec3 normal) {
