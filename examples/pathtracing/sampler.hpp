@@ -1,15 +1,21 @@
-#ifndef RANDOM_HPP
-#define RANDOM_HPP
+#ifndef SAMPLER_HPP
+#define SAMPLER_HPP
 
+#include <memory>
 #include <random>
 
+#include "image.hpp"
 #include "math/math.hpp"
 #include "math/triangle.hpp"
 
-struct random_t {
-  random_t(uint32_t seed) { rng.seed(seed); }
+struct sampler_t {
   std::mt19937                          rng{};
   std::uniform_real_distribution<float> dist{0.0, 1.0};
+
+  sampler_t(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
+            uint32_t spp) {
+    rng.seed(x + (y * width) + (spp * width * height));
+  }
 
   float randf() { return dist(rng); }
 

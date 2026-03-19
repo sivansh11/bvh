@@ -11,7 +11,7 @@
 #include "image.hpp"
 #include "math/math.hpp"
 #include "model/model.hpp"
-#include "random.hpp"
+#include "sampler.hpp"
 
 inline bool is_normalized(const math::vec3& v) {
   return std::abs(math::length2(v) - 1.0f) < epsilon;
@@ -75,13 +75,13 @@ struct scatter_sample_t {
 struct lambertian_t {
   std::shared_ptr<image_t> texture;
   bool                     is_specular() const { return false; }
-  math::vec3               emitted(random_t&         random,
+  math::vec3               emitted(sampler_t&        sampler,
                                    const math::vec3& wo,  //
                                    const math::vec3& n,   //
                                    const math::vec2& uv) const {
     return math::vec3{0.f};
   }
-  math::vec3 evaluate(random_t&         random,
+  math::vec3 evaluate(sampler_t&        sampler,
                       const math::vec3& wi,  //
                       const math::vec3& wo,  //
                       const math::vec3& n,   //
@@ -93,14 +93,14 @@ struct lambertian_t {
     if (cos_theta <= 0.f) return math::vec3{0.f};
     return texture->sample(uv.x, uv.y) * (1.f / math::pi<float>());
   }
-  std::pair<bool, scatter_sample_t> sample(random_t&         random,
+  std::pair<bool, scatter_sample_t> sample(sampler_t&        sampler,
                                            const math::vec3& wo,  //
                                            const math::vec3& n,   //
                                            const math::vec2& uv) const {
     assert(is_normalized(wo));
     assert(is_normalized(n));
     scatter_sample_t scatter_sample{};
-    scatter_sample.wi = n + random.unit_vector();
+    scatter_sample.wi = n + sampler.unit_vector();
     if (math::length2(scatter_sample.wi) < 1e-8f) scatter_sample.wi = n;
     scatter_sample.wi          = math::normalize(scatter_sample.wi);
     float cos_theta            = math::dot(scatter_sample.wi, n);
@@ -109,10 +109,10 @@ struct lambertian_t {
     if (cos_theta <= 0.f) return {false, {}};
     return {true, scatter_sample};
   }
-  float pdf(random_t&         random,  //
-            const math::vec3& wi,      //
-            const math::vec3& wo,      //
-            const math::vec3& n,       //
+  float pdf(sampler_t&        sampler,  //
+            const math::vec3& wi,       //
+            const math::vec3& wo,       //
+            const math::vec3& n,        //
             const math::vec2& uv) const {
     float cos_theta = math::dot(wi, n);
     return cos_theta > 0.f ? cos_theta * math::one_over_pi<float>() : 0.f;
@@ -126,36 +126,36 @@ struct metal_t {
   math::vec3 albedo;
   float      fuzz;
   bool       is_specular() const { return true; }
-  math::vec3 emitted(random_t&         random,  //
-                     const math::vec3& wo,      //
-                     const math::vec3& n,       //
+  math::vec3 emitted(sampler_t&        sampler,  //
+                     const math::vec3& wo,       //
+                     const math::vec3& n,        //
                      const math::vec2& uv) const {
     return math::vec3{0.f};
   }
-  math::vec3 evaluate(random_t&         random,  //
-                      const math::vec3& wi,      //
-                      const math::vec3& wo,      //
-                      const math::vec3& n,       //
+  math::vec3 evaluate(sampler_t&        sampler,  //
+                      const math::vec3& wi,       //
+                      const math::vec3& wo,       //
+                      const math::vec3& n,        //
                       const math::vec2& uv) const {
     return math::vec3{0.f};
   }
-  std::pair<bool, scatter_sample_t> sample(random_t&         random,
+  std::pair<bool, scatter_sample_t> sample(sampler_t&        sampler,
                                            const math::vec3& wo,  //
                                            const math::vec3& n,
                                            const math::vec2& uv) const {
     scatter_sample_t scatter_sample{};
     math::vec3       reflected = math::reflect(-wo, n);
     scatter_sample.wi =
-        math::normalize(reflected + (fuzz * random.unit_vector()));
+        math::normalize(reflected + (fuzz * sampler.unit_vector()));
     scatter_sample.attenuation = albedo;
     scatter_sample.pdf         = 1.f;
     if (math::dot(scatter_sample.wi, n) <= 0) return {false, {}};
     return {true, scatter_sample};
   }
-  float pdf(random_t&         random,  //
-            const math::vec3& wi,      //
-            const math::vec3& wo,      //
-            const math::vec3& n,       //
+  float pdf(sampler_t&        sampler,  //
+            const math::vec3& wi,       //
+            const math::vec3& wo,       //
+            const math::vec3& n,        //
             const math::vec2& uv) const {
     return 0.f;
   }
@@ -164,20 +164,20 @@ struct metal_t {
 struct dielectric_t {
   float      refraction_index;
   bool       is_specular() const { return true; }
-  math::vec3 emitted(random_t&         random,  //
-                     const math::vec3& wo,      //
-                     const math::vec3& n,       //
+  math::vec3 emitted(sampler_t&        sampler,  //
+                     const math::vec3& wo,       //
+                     const math::vec3& n,        //
                      const math::vec2& uv) const {
     return math::vec3{0.f};
   }
-  math::vec3 evaluate(random_t&         random,  //
-                      const math::vec3& wi,      //
-                      const math::vec3& wo,      //
-                      const math::vec3& n,       //
+  math::vec3 evaluate(sampler_t&        sampler,  //
+                      const math::vec3& wi,       //
+                      const math::vec3& wo,       //
+                      const math::vec3& n,        //
                       const math::vec2& uv) const {
     return math::vec3{0.f};
   }
-  std::pair<bool, scatter_sample_t> sample(random_t&         random,
+  std::pair<bool, scatter_sample_t> sample(sampler_t&        sampler,
                                            const math::vec3& wo,  //
                                            const math::vec3& n,
                                            const math::vec2& uv) const {
@@ -196,7 +196,7 @@ struct dielectric_t {
       return r0 + (1.0f - r0) * std::pow((1.0f - cosine), 5);
     };
     math::vec3 direction;
-    if (cannot_refract || reflectance(cos_theta, ri) > random.randf()) {
+    if (cannot_refract || reflectance(cos_theta, ri) > sampler.randf()) {
       direction = math::reflect(-wo, outward_normal);
     } else {
       direction = math::refract(-wo, outward_normal, ri);
@@ -204,10 +204,10 @@ struct dielectric_t {
     scatter_sample.wi = math::normalize(direction);
     return {true, scatter_sample};
   }
-  float pdf(random_t&         random,  //
-            const math::vec3& wi,      //
-            const math::vec3& wo,      //
-            const math::vec3& n,       //
+  float pdf(sampler_t&        sampler,  //
+            const math::vec3& wi,       //
+            const math::vec3& wo,       //
+            const math::vec3& n,        //
             const math::vec2& uv) const {
     return 0.f;
   }
@@ -216,31 +216,31 @@ struct dielectric_t {
 struct light_t {
   math::vec3 emission;
   bool       is_specular() const { return false; }
-  math::vec3 emitted(random_t&         random,  //
-                     const math::vec3& wo,      //
-                     const math::vec3& n,       //
+  math::vec3 emitted(sampler_t&        sampler,  //
+                     const math::vec3& wo,       //
+                     const math::vec3& n,        //
                      const math::vec2& uv) const {
     assert(is_normalized(wo));
     assert(is_normalized(n));
     return math::dot(wo, n) > 0.f ? emission : math::vec3{0.f};
   }
-  math::vec3 evaluate(random_t&         random,  //
-                      const math::vec3& wi,      //
-                      const math::vec3& wo,      //
-                      const math::vec3& n,       //
+  math::vec3 evaluate(sampler_t&        sampler,  //
+                      const math::vec3& wi,       //
+                      const math::vec3& wo,       //
+                      const math::vec3& n,        //
                       const math::vec2& uv) const {
     return math::vec3{0.f};
   }
-  std::pair<bool, scatter_sample_t> sample(random_t&         random,
+  std::pair<bool, scatter_sample_t> sample(sampler_t&        sampler,
                                            const math::vec3& wo,  //
                                            const math::vec3& n,
                                            const math::vec2& uv) const {
     return {false, {}};
   }
-  float pdf(random_t&         random,  //
-            const math::vec3& wi,      //
-            const math::vec3& wo,      //
-            const math::vec3& n,       //
+  float pdf(sampler_t&        sampler,  //
+            const math::vec3& wi,       //
+            const math::vec3& wo,       //
+            const math::vec3& n,        //
             const math::vec2& uv) const {
     return 0.f;
   }
@@ -340,90 +340,90 @@ struct material_t {
         break;
     }
   }
-  math::vec3 emitted(random_t&         random,
+  math::vec3 emitted(sampler_t&        sampler,
                      const math::vec3& wo,  //
                      const math::vec3& n,   //
                      const math::vec2& uv) const {
     switch (type) {
       case material_type_t::e_lambertian:
-        return as.lambertian.emitted(random, wo, n, uv);
+        return as.lambertian.emitted(sampler, wo, n, uv);
         break;
       case material_type_t::e_metal:
-        return as.metal.emitted(random, wo, n, uv);
+        return as.metal.emitted(sampler, wo, n, uv);
         break;
       case material_type_t::e_dielectric:
-        return as.dielectric.emitted(random, wo, n, uv);
+        return as.dielectric.emitted(sampler, wo, n, uv);
         break;
       case material_type_t::e_light:
-        return as.light.emitted(random, wo, n, uv);
+        return as.light.emitted(sampler, wo, n, uv);
         break;
       default:
         throw std::runtime_error("unknown material");
         break;
     }
   }
-  math::vec3 evaluate(random_t&         random,
+  math::vec3 evaluate(sampler_t&        sampler,
                       const math::vec3& wi,  //
                       const math::vec3& wo,  //
                       const math::vec3& n,   //
                       const math::vec2& uv) const {
     switch (type) {
       case material_type_t::e_lambertian:
-        return as.lambertian.evaluate(random, wi, wo, n, uv);
+        return as.lambertian.evaluate(sampler, wi, wo, n, uv);
         break;
       case material_type_t::e_metal:
-        return as.metal.evaluate(random, wi, wo, n, uv);
+        return as.metal.evaluate(sampler, wi, wo, n, uv);
         break;
       case material_type_t::e_dielectric:
-        return as.dielectric.evaluate(random, wi, wo, n, uv);
+        return as.dielectric.evaluate(sampler, wi, wo, n, uv);
         break;
       case material_type_t::e_light:
-        return as.light.evaluate(random, wi, wo, n, uv);
+        return as.light.evaluate(sampler, wi, wo, n, uv);
         break;
       default:
         throw std::runtime_error("unknown material");
         break;
     }
   }
-  std::pair<bool, scatter_sample_t> sample(random_t&         random,
+  std::pair<bool, scatter_sample_t> sample(sampler_t&        sampler,
                                            const math::vec3& wo,  //
                                            const math::vec3& n,
                                            const math::vec2& uv) const {
     switch (type) {
       case material_type_t::e_lambertian:
-        return as.lambertian.sample(random, wo, n, uv);
+        return as.lambertian.sample(sampler, wo, n, uv);
         break;
       case material_type_t::e_metal:
-        return as.metal.sample(random, wo, n, uv);
+        return as.metal.sample(sampler, wo, n, uv);
         break;
       case material_type_t::e_dielectric:
-        return as.dielectric.sample(random, wo, n, uv);
+        return as.dielectric.sample(sampler, wo, n, uv);
         break;
       case material_type_t::e_light:
-        return as.light.sample(random, wo, n, uv);
+        return as.light.sample(sampler, wo, n, uv);
         break;
       default:
         throw std::runtime_error("unknown material");
         break;
     }
   }
-  float pdf(random_t&         random,  //
-            const math::vec3& wi,      //
-            const math::vec3& wo,      //
-            const math::vec3& n,       //
+  float pdf(sampler_t&        sampler,  //
+            const math::vec3& wi,       //
+            const math::vec3& wo,       //
+            const math::vec3& n,        //
             const math::vec2& uv) const {
     switch (type) {
       case material_type_t::e_lambertian:
-        return as.lambertian.pdf(random, wi, wo, n, uv);
+        return as.lambertian.pdf(sampler, wi, wo, n, uv);
         break;
       case material_type_t::e_metal:
-        return as.metal.pdf(random, wi, wo, n, uv);
+        return as.metal.pdf(sampler, wi, wo, n, uv);
         break;
       case material_type_t::e_dielectric:
-        return as.dielectric.pdf(random, wi, wo, n, uv);
+        return as.dielectric.pdf(sampler, wi, wo, n, uv);
         break;
       case material_type_t::e_light:
-        return as.light.pdf(random, wi, wo, n, uv);
+        return as.light.pdf(sampler, wi, wo, n, uv);
         break;
       default:
         throw std::runtime_error("unknown material");

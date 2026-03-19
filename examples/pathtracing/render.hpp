@@ -6,13 +6,12 @@
 #include <vector>
 
 #include "image.hpp"
-#include "random.hpp"
 
 template <typename fn_t>
 void render(uint32_t max_threads, uint32_t max_spp, uint32_t save_interval,
             image_t &image, const std::string name, fn_t fn) {
-  uint32_t width  = image._width;
-  uint32_t height = image._height;
+  uint32_t                width  = image._width;
+  uint32_t                height = image._height;
   std::vector<math::vec3> accum(width * height, math::vec3{0.f});
   uint32_t                current_spp = 0;
   std::vector<std::pair<uint32_t, uint32_t>> work;
@@ -23,14 +22,13 @@ void render(uint32_t max_threads, uint32_t max_spp, uint32_t save_interval,
     std::vector<std::thread> threads{};
     for (uint32_t t_idx = 0; t_idx < max_threads; t_idx++) {
       threads.emplace_back([&, t_idx, batch_len]() {
-        random_t thread_rng(t_idx ^ current_spp);
         for (uint32_t w_idx = t_idx; w_idx < work.size();
              w_idx += max_threads) {
-          auto [x, y]        = work[w_idx];
-          uint32_t pixel_idx = y * width + x;
+          auto [x, y]          = work[w_idx];
+          uint32_t   pixel_idx = y * width + x;
           math::vec3 batch_sum{0.f};
           for (uint32_t s = 0; s < batch_len; s++) {
-            batch_sum += fn(x, y, thread_rng);
+            batch_sum += fn(x, y, current_spp);
           }
           accum[pixel_idx] += batch_sum;
         }

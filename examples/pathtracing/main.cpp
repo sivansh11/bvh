@@ -8,7 +8,6 @@
 #include <iostream>
 #include <iterator>
 #include <limits>
-#include <random>
 #include <stdexcept>
 #include <thread>
 #include <vector>
@@ -29,8 +28,8 @@
 #include "math/triangle.hpp"
 #include "math/utilies.hpp"
 #include "model/model.hpp"
-#include "random.hpp"
 #include "render.hpp"
+#include "sampler.hpp"
 #include "scene.hpp"
 
 math::mat4 create_transform(math::vec3 translation,  //
@@ -63,10 +62,10 @@ void add_instance(scene_t         &scene,
   scene.instance_to_mesh_index.push_back(mesh_index);
 }
 
-bool russian_roulette_terminate(random_t &random, math::vec3 &throughput) {
+bool russian_roulette_terminate(sampler_t &sampler, math::vec3 &throughput) {
   float p =
       std::min(1.0f, std::max({throughput.r, throughput.g, throughput.b}));
-  if (random.randf() > p) return true;
+  if (sampler.randf() > p) return true;
   throughput /= p;
   return false;
 }
@@ -80,10 +79,10 @@ math::vec3 sample_light(scene_t          &scene,     //
                         const math::vec3 &normal,    //
                         const math::vec3 &wo,        //
                         const material_t &material,  //
-                        random_t &random, const math::vec2 &uv) {
+                        sampler_t &sampler, const math::vec2 &uv) {
   if (!scene.light_instance_indices.size()) return math::vec3{0.f};
 
-  float sample = random.randf();
+  float sample = sampler.randf();
   auto  itr = std::lower_bound(scene.light_cdfs.begin(), scene.light_cdfs.end(),
                                sample);
   uint32_t light_record_index = std::distance(scene.light_cdfs.begin(), itr);
@@ -100,7 +99,7 @@ math::vec3 sample_light(scene_t          &scene,     //
   triangle.v1 = instance.transform * math::vec4{triangle.v1, 1.f};
   triangle.v2 = instance.transform * math::vec4{triangle.v2, 1.f};
 
-  math::vec3 p_world      = random.sample_triangle(triangle);
+  math::vec3 p_world      = sampler.sample_triangle(triangle);
   math::vec3 light_normal = triangle.normal();
 
   math::vec3 L       = p_world - hit_pos;
@@ -125,8 +124,8 @@ math::vec3 sample_light(scene_t          &scene,     //
                          shadow_hit.blas_hit.prim_index == triangle_index);
     if (!is_occluded) {
       math::vec3 emission = scene.materials[light_instance_index].emitted(
-          random, -wi, light_normal, uv);
-      math::vec3 brdf = material.evaluate(random, wi, wo, normal, uv);
+          sampler, -wi, light_normal, uv);
+      math::vec3 brdf = material.evaluate(sampler, wi, wo, normal, uv);
       float      G    = (cos_theta * cos_light) / dist_sq;
       float      pdf  = discrete_probability * light_record.inv_area;
       return (brdf * emission * G) / pdf;
@@ -156,10 +155,10 @@ light_sample_t sample_light_mis(scene_t          &scene,     //
                                 const math::vec3 &normal,    //
                                 const math::vec3 &wo,        //
                                 const material_t &material,  //
-                                random_t &random, const math::vec2 &uv) {
+                                sampler_t &sampler, const math::vec2 &uv) {
   if (!scene.light_instance_indices.size()) return {{}, 0.f};
 
-  float sample = random.randf();
+  float sample = sampler.randf();
   auto  itr = std::lower_bound(scene.light_cdfs.begin(), scene.light_cdfs.end(),
                                sample);
   uint32_t light_record_index = std::distance(scene.light_cdfs.begin(), itr);
@@ -176,7 +175,7 @@ light_sample_t sample_light_mis(scene_t          &scene,     //
   triangle.v1 = instance.transform * math::vec4{triangle.v1, 1.f};
   triangle.v2 = instance.transform * math::vec4{triangle.v2, 1.f};
 
-  math::vec3 p_world      = random.sample_triangle(triangle);
+  math::vec3 p_world      = sampler.sample_triangle(triangle);
   math::vec3 light_normal = triangle.normal();
 
   math::vec3 L       = p_world - hit_pos;
@@ -201,12 +200,12 @@ light_sample_t sample_light_mis(scene_t          &scene,     //
                          shadow_hit.blas_hit.prim_index == triangle_index);
     if (!is_occluded) {
       math::vec3 emission = scene.materials[light_instance_index].emitted(
-          random, -wi, light_normal, uv);
-      math::vec3 brdf      = material.evaluate(random, wi, wo, normal, uv);
+          sampler, -wi, light_normal, uv);
+      math::vec3 brdf      = material.evaluate(sampler, wi, wo, normal, uv);
       float      G         = (cos_theta * cos_light) / dist_sq;
       float      pdf_area  = discrete_probability * light_record.inv_area;
       float      pdf_light = pdf_area * (dist_sq / cos_light);
-      float      pdf_brdf  = material.pdf(random, wi, wo, normal, uv);
+      float      pdf_brdf  = material.pdf(sampler, wi, wo, normal, uv);
       float      weight    = power_huristic(pdf_light, pdf_brdf);
       math::vec3 radiance  = (brdf * emission * G * weight) / pdf_area;
       return {radiance, pdf_light};
@@ -292,7 +291,7 @@ math::vec3 trace_path(scene_t    &scene,  //
                       bvh::ray_t  ray,    //
                       bool        nee,    //
                       bool        mis,    //
-                      random_t   &random) {
+                      sampler_t  &sampler) {
   math::vec3 throughput{1.0f}, radiance{0.0f};
   material_t prev_mat;
   prev_mat.type            = material_type_t::e_unknown;
@@ -338,24 +337,24 @@ math::vec3 trace_path(scene_t    &scene,  //
 
       radiance +=
           throughput *
-          material.emitted(random, wo, hit_vertex.normal, hit_vertex.uv) *
+          material.emitted(sampler, wo, hit_vertex.normal, hit_vertex.uv) *
           weight;
       break;
     }
 
     auto [should_continue, scatter_sample] =
-        material.sample(random, wo, hit_vertex.normal, hit_vertex.uv);
+        material.sample(sampler, wo, hit_vertex.normal, hit_vertex.uv);
 
     if (nee && !material.is_specular()) {
       if (!mis) {
         // pure nee
         radiance +=
             throughput * sample_light(scene, tlas, hit_pos, hit_vertex.normal,
-                                      wo, material, random, hit_vertex.uv);
+                                      wo, material, sampler, hit_vertex.uv);
       } else {
         light_sample_t light_sample =
             sample_light_mis(scene, tlas, hit_pos, hit_vertex.normal, wo,
-                             material, random, hit_vertex.uv);
+                             material, sampler, hit_vertex.uv);
         radiance += throughput * light_sample.radiance;
       }
     }
@@ -363,7 +362,7 @@ math::vec3 trace_path(scene_t    &scene,  //
 
     throughput *= scatter_sample.attenuation;
 
-    if (russian_roulette_terminate(random, throughput)) break;
+    if (russian_roulette_terminate(sampler, throughput)) break;
 
     math::vec3 offset_normal =
         math::dot(scatter_sample.wi, hit_vertex.normal) > 0.f
@@ -486,14 +485,15 @@ int main(int argc, char **argv) {
   auto start = std::chrono::high_resolution_clock::now();
 
   render(16, max_spp, 4, image, argv[2],
-         [&](uint32_t x, uint32_t y, random_t &rng) -> math::vec3 {
-           float jitter_x = static_cast<float>(x) + (rng.randf() - 0.5f);
-           float jitter_y = static_cast<float>(y) + (rng.randf() - 0.5f);
+         [&](uint32_t x, uint32_t y, uint32_t current_spp) -> math::vec3 {
+           sampler_t sampler(x, y, image._width, image._height, current_spp);
+           float jitter_x = static_cast<float>(x) + (sampler.randf() - 0.5f);
+           float jitter_y = static_cast<float>(y) + (sampler.randf() - 0.5f);
 
            auto [O, D]    = camera.ray_gen(jitter_x, jitter_y);
            bvh::ray_t ray = bvh::ray_t::create(O, D);
 
-           math::vec3 color = trace_path(scene, tlas, ray, nee, mis, rng);
+           math::vec3 color = trace_path(scene, tlas, ray, nee, mis, sampler);
 
            if (math::any(math::isnan(color)) || math::any(math::isinf(color)))
              throw std::runtime_error("something went wrong");
