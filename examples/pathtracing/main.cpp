@@ -498,7 +498,7 @@ int main(int argc, char **argv) {
            if (math::any(math::isnan(color)) || math::any(math::isinf(color)))
              throw std::runtime_error("something went wrong");
 
-           return math::any(math::isnan(color)) ? math::vec3{0.f} : color;
+           return color;
          });
 
   auto end = std::chrono::high_resolution_clock::now();
