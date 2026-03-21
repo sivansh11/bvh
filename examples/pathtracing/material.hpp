@@ -453,6 +453,7 @@ struct material_t {
 
 inline material_t create_lambertian(math::vec3 color) {
   material_t material;
+  new (&material.as.lambertian) lambertian_t();
   material.type                  = material_type_t::e_lambertian;
   material.as.lambertian.texture = create_solid_color_image(color);
   return material;
@@ -460,6 +461,7 @@ inline material_t create_lambertian(math::vec3 color) {
 
 inline material_t create_lambertian(const std::filesystem::path& texture_path) {
   material_t material;
+  new (&material.as.lambertian) lambertian_t();
   material.type                  = material_type_t::e_lambertian;
   material.as.lambertian.texture = load_texture(texture_path);
   return material;
@@ -467,6 +469,7 @@ inline material_t create_lambertian(const std::filesystem::path& texture_path) {
 
 inline material_t create_lambertian(std::shared_ptr<image_t> texture) {
   material_t material;
+  new (&material.as.lambertian) lambertian_t();
   material.type                  = material_type_t::e_lambertian;
   material.as.lambertian.texture = texture;
   return material;
@@ -474,6 +477,7 @@ inline material_t create_lambertian(std::shared_ptr<image_t> texture) {
 
 inline material_t create_metal(math::vec3 albedo, float fuzz) {
   material_t material;
+  new (&material.as.metal) metal_t();
   material.type            = material_type_t::e_metal;
   material.as.metal.albedo = albedo;
   material.as.metal.fuzz   = fuzz;
@@ -482,6 +486,7 @@ inline material_t create_metal(math::vec3 albedo, float fuzz) {
 
 inline material_t create_dielectric(float refraction_index) {
   material_t material;
+  new (&material.as.dielectric) dielectric_t();
   material.type                           = material_type_t::e_dielectric;
   material.as.dielectric.refraction_index = refraction_index;
   return material;
@@ -489,6 +494,7 @@ inline material_t create_dielectric(float refraction_index) {
 
 inline material_t create_light(math::vec3 emission) {
   material_t material;
+  new (&material.as.light) light_t();
   material.type              = material_type_t::e_light;
   material.as.light.emission = emission;
   return material;
