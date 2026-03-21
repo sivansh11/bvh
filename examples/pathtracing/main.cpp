@@ -100,7 +100,7 @@ math::vec3 sample_light(scene_t          &scene,     //
   triangle.v1 = instance.transform * math::vec4{triangle.v1, 1.f};
   triangle.v2 = instance.transform * math::vec4{triangle.v2, 1.f};
 
-  math::vec3 p_world      = sampler.sample_triangle(triangle);
+  math::vec3 p_world      = sampler.triangle(triangle);
   math::vec3 light_normal = triangle.normal();
 
   math::vec3 L       = p_world - hit_pos;
@@ -176,7 +176,7 @@ light_sample_t sample_light_mis(scene_t          &scene,     //
   triangle.v1 = instance.transform * math::vec4{triangle.v1, 1.f};
   triangle.v2 = instance.transform * math::vec4{triangle.v2, 1.f};
 
-  math::vec3 p_world      = sampler.sample_triangle(triangle);
+  math::vec3 p_world      = sampler.triangle(triangle);
   math::vec3 light_normal = triangle.normal();
 
   math::vec3 L       = p_world - hit_pos;

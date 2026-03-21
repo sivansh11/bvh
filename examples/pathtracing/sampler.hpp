@@ -38,12 +38,12 @@ struct sampler_t {
       return -v;
   }
 
-  uint32_t sample(uint32_t n) {
+  uint32_t index(uint32_t n) {
     std::uniform_int_distribution<uint32_t> _dist(0, n - 1);
     return _dist(rng);
   }
 
-  math::vec3 sample_triangle(const math::triangle_t &triangle) {
+  math::vec3 triangle(const math::triangle_t &triangle) {
     float u = randf();
     float v = randf();
     if (u + v > 1.f) {
