@@ -354,7 +354,7 @@ math::vec3 trace_path(const scene_t    &scene,  //
 
     throughput *= scatter_sample.attenuation;
 
-    if (russian_roulette_terminate(sampler, throughput)) break;
+    if (bounce > 2 && russian_roulette_terminate(sampler, throughput)) break;
 
     math::vec3 offset_normal =
         math::dot(scatter_sample.wi, hit_vertex.normal) > 0.f
