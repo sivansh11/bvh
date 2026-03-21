@@ -30,8 +30,9 @@ struct hit_t {
   }
 };
 
-hit_t intersect_tlas(bvh::node_t *nodes, uint32_t *indices,
-                     instance_t *instances, blas_t *blases, bvh::ray_t ray);
+hit_t intersect_tlas(const bvh::node_t *nodes, const uint32_t *indices,
+                     const instance_t *instances, const blas_t *blases,
+                     bvh::ray_t ray);
 
 }  // namespace tlas
 

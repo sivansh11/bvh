@@ -7,8 +7,9 @@
 
 namespace tlas {
 
-hit_t intersect_tlas(bvh::node_t *nodes, uint32_t *indices,
-                     instance_t *instances, blas_t *blases, bvh::ray_t ray) {
+hit_t intersect_tlas(const bvh::node_t *nodes, const uint32_t *indices,
+                     const instance_t *instances, const blas_t *blases,
+                     bvh::ray_t ray) {
   static const uint32_t stack_size = 16;
   uint32_t              stack[stack_size];
 
@@ -24,7 +25,7 @@ hit_t intersect_tlas(bvh::node_t *nodes, uint32_t *indices,
     for (uint32_t i = 0; i < root.prim_count; i++) {
       const uint32_t   instance_index = indices[root.index + i];
       const instance_t instance       = instances[instance_index];
-      blas_t          &blas           = blases[instance.blas_index];
+      const blas_t    &blas           = blases[instance.blas_index];
       math::vec4       local_origin =
           instance.inv_transform * math::vec4{ray.origin, 1.f};
       math::vec4 local_direction =
@@ -78,7 +79,7 @@ hit_t intersect_tlas(bvh::node_t *nodes, uint32_t *indices,
     for (uint32_t index = start; index < end; index++) {
       const uint32_t   instance_index = indices[index];
       const instance_t instance       = instances[instance_index];
-      blas_t          &blas           = blases[instance.blas_index];
+      const blas_t    &blas           = blases[instance.blas_index];
       math::vec4       local_origin =
           instance.inv_transform * math::vec4{ray.origin, 1.f};
       math::vec4 local_direction =

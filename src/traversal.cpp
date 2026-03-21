@@ -48,8 +48,8 @@ aabb_hit_t intersect_aabb(const math::vec3 _min, const math::vec3 _max,
   return hit;
 }
 
-hit_t intersect_bvh(bvh::node_t *nodes, uint32_t *indices,
-                    math::triangle_t *triangles, ray_t ray) {
+hit_t intersect_bvh(const bvh::node_t *nodes, const uint32_t *indices,
+                    const math::triangle_t *triangles, ray_t ray) {
   static const uint32_t stack_size = 16;
   uint32_t              stack[stack_size];
 
