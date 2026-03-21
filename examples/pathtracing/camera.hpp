@@ -5,6 +5,7 @@
 
 class camera_t {
  public:
+  camera_t() = default;
   camera_t(float vfov, math::vec3 from, math::vec3 at,
            math::vec3 up = {0, 1, 0})
       : _vfov(vfov), _from(from), _at(at), _up(up) {}

@@ -17,6 +17,7 @@
 #include "bvh/traversal.hpp"
 #include "camera.hpp"
 #include "common.hpp"
+#include "config.hpp"
 #include "glm/common.hpp"
 #include "glm/fwd.hpp"
 #include "glm/geometric.hpp"
@@ -379,54 +380,46 @@ math::vec3 trace_path(scene_t    &scene,  //
 }
 
 int main(int argc, char **argv) {
-  if (argc != 6) {
-    std::cerr << "Usage: [pathtracing] [model] [name] [nee] [mis] [spp]\n";
-    exit(EXIT_FAILURE);
+  if (argc != 3) {
+    std::cerr << "Usage: " << argv[0]
+              << " <config_file.yaml> <output_image_name>\n";
+    return EXIT_FAILURE;
   }
 
-  bool     nee     = std::stoi(argv[3]);
-  bool     mis     = std::stoi(argv[4]);
-  uint32_t max_spp = std::stoi(argv[5]);
+  config_t config;
+  try {
+    config = load_config(argv[1]);
+  } catch (const std::exception &e) {
+    std::cerr << "Fatal Error loading config: " << e.what() << '\n';
+    return EXIT_FAILURE;
+  }
 
   scene_t scene{};
-  scene.background = [](const bvh::ray_t &ray) { return math::vec3{0}; };
 
-  const math::vec3 white{.73, .73, .73};
-  const math::vec3 red{.65, .05, .05};
-  const math::vec3 green{.12, .45, .15};
-  const float      pi = math::pi<float>();
+  math::vec3 bg_color = config.background;
+  scene.background    = [bg_color](const bvh::ray_t &ray) -> math::vec3 {
+    return bg_color;
+  };
 
-  math::vec3 from = {750, 600, 500};
-  // math::vec3 from = {750, 600, 0};
-  // math::vec3 from = {750, 100, 500};
-  math::vec3 to = from + math::vec3{-1, 0, 0};
-  camera_t   camera{90.f, from, to};
-  {
-    auto model = model::load_model_from_path("./sphere.obj");
-    for (auto &mesh : model.meshes) {
+  for (const auto &entity : config.entities) {
+    auto model = model::load_model_from_path(entity.path);
+
+    for (const auto &mesh : model.meshes) {
+      std::cout << "Loading mesh: " << mesh.name << '\n';
       auto triangles = model::create_triangles_from_mesh(mesh);
       auto aabbs     = math::aabbs_from_triangles(triangles);
       scene.blases.emplace_back(bvh::build_bvh_sweep_sah(aabbs), triangles);
-      uint32_t mesh_index = scene.raw_meshes.size();
+      uint32_t mesh_index = static_cast<uint32_t>(scene.raw_meshes.size());
       scene.raw_meshes.push_back(mesh);
-      add_instance(
-          scene,
-          create_transform({1000, 5000, -750}, {0, 0, 0}, {1000, 1000, 1000}),
-          create_light(math::vec3{1000.f}), mesh_index);
-    }
-  }
-  {
-    auto model = model::load_model_from_path(argv[1]);
-    for (auto &mesh : model.meshes) {
-      std::cout << mesh.name << '\n';
-      auto triangles = model::create_triangles_from_mesh(mesh);
-      auto aabbs     = math::aabbs_from_triangles(triangles);
-      scene.blases.emplace_back(bvh::build_bvh_sweep_sah(aabbs), triangles);
-      uint32_t mesh_index = scene.raw_meshes.size();
-      scene.raw_meshes.push_back(mesh);
-      auto diffuse_tex = get_diffuse_texture(mesh.material_description);
-      add_instance(scene, create_transform({0, 0, 0}, {0, 0, 0}, {1, 1, 1}),
-                   create_lambertian(diffuse_tex), mesh_index);
+      if (entity.material.type == material_type_t::e_lambertian) {
+        auto diffuse_tex = get_diffuse_texture(mesh.material_description);
+        add_instance(scene, entity.transform, create_lambertian(diffuse_tex),
+                     mesh_index);
+      } else if (entity.material.type == material_type_t::e_light) {
+        add_instance(scene, entity.transform,
+                     create_light(entity.material.as.light.emission),
+                     mesh_index);
+      }
     }
   }
 
@@ -478,13 +471,15 @@ int main(int argc, char **argv) {
     }
   }
 
+  camera_t &camera = config.camera;
+
   image_t image{640, 640};
   // image_t  image{1920, 1200};
-  camera.set_dimentions(image._width, image._height);
+  config.camera.set_dimentions(image._width, image._height);
 
   auto start = std::chrono::high_resolution_clock::now();
 
-  render(16, max_spp, 4, image, argv[2],
+  render(16, config.max_spp, 4, image, argv[2],
          [&](uint32_t x, uint32_t y, uint32_t current_spp) -> math::vec3 {
            sampler_t sampler(x, y, image._width, image._height, current_spp);
            float jitter_x = static_cast<float>(x) + (sampler.randf() - 0.5f);
@@ -493,7 +488,8 @@ int main(int argc, char **argv) {
            auto [O, D]    = camera.ray_gen(jitter_x, jitter_y);
            bvh::ray_t ray = bvh::ray_t::create(O, D);
 
-           math::vec3 color = trace_path(scene, tlas, ray, nee, mis, sampler);
+           math::vec3 color =
+               trace_path(scene, tlas, ray, config.nee, config.mis, sampler);
 
            if (math::any(math::isnan(color)) || math::any(math::isinf(color)))
              throw std::runtime_error("something went wrong");
