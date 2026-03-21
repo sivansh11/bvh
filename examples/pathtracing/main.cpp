@@ -71,11 +71,8 @@ bool russian_roulette_terminate(sampler_t &sampler, math::vec3 &throughput) {
   return false;
 }
 
-// TODO: make bvh traversal const
-// TODO: make tlas traversal const
-// TODO: make scene const
-math::vec3 sample_light(scene_t          &scene,     //
-                        bvh::bvh_t       &tlas,      //
+math::vec3 sample_light(const scene_t    &scene,     //
+                        const bvh::bvh_t &tlas,      //
                         const math::vec3 &hit_pos,   //
                         const math::vec3 &normal,    //
                         const math::vec3 &wo,        //
@@ -150,8 +147,8 @@ float power_huristic(float a, float b) {
   return a2 / (a2 + b2);
 }
 
-light_sample_t sample_light_mis(scene_t          &scene,     //
-                                bvh::bvh_t       &tlas,      //
+light_sample_t sample_light_mis(const scene_t    &scene,     //
+                                const bvh::bvh_t &tlas,      //
                                 const math::vec3 &hit_pos,   //
                                 const math::vec3 &normal,    //
                                 const math::vec3 &wo,        //
@@ -261,9 +258,6 @@ inline model::vertex_t interpolate_vertex(const scene_t          &scene,
   return interpolated;
 }
 
-// TODO: make bvh traversal const
-// TODO: make tlas traversal const
-// TODO: make scene const
 float calculate_light_pdf(const scene_t     &scene,  //
                           const math::vec3  &hit_pos,
                           const tlas::hit_t &light_hit,
@@ -284,15 +278,12 @@ float calculate_light_pdf(const scene_t     &scene,  //
   return pdf_area * (dist_sq / cos_light);
 }
 
-// TODO: make bvh traversal const
-// TODO: make tlas traversal const
-// TODO: make scene const
-math::vec3 trace_path(scene_t    &scene,  //
-                      bvh::bvh_t &tlas,   //
-                      bvh::ray_t  ray,    //
-                      bool        nee,    //
-                      bool        mis,    //
-                      sampler_t  &sampler) {
+math::vec3 trace_path(const scene_t    &scene,  //
+                      const bvh::bvh_t &tlas,   //
+                      bvh::ray_t        ray,    //
+                      bool              nee,    //
+                      bool              mis,    //
+                      sampler_t        &sampler) {
   math::vec3 throughput{1.0f}, radiance{0.0f};
   material_t prev_mat;
   prev_mat.type            = material_type_t::e_unknown;
