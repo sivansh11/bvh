@@ -466,7 +466,7 @@ int main(int argc, char **argv) {
 
   image_t image{640, 640};
   // image_t  image{1920, 1200};
-  config.camera.set_dimentions(image._width, image._height);
+  config.camera.set_dimensions(image._width, image._height);
 
   auto start = std::chrono::high_resolution_clock::now();
 

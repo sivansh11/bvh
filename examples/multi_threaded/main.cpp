@@ -60,7 +60,7 @@ class camera_t {
            math::vec3 up = {0, 1, 0})
       : _vfov(vfov), _from(from), _at(at), _up(up) {}
 
-  void set_dimentions(uint32_t width, uint32_t height) {
+  void set_dimensions(uint32_t width, uint32_t height) {
     _width  = width;
     _height = height;
 
@@ -280,7 +280,7 @@ int main(int argc, char **argv) {
   image_t image{1600, 1200};
   // camera_t camera{90.f, {0, 1, 2}, {0, 1, 0}};
   camera_t camera{90.f, {0, 1, 0}, {1, 1, 0}};
-  camera.set_dimentions(image._width, image._height);
+  camera.set_dimensions(image._width, image._height);
 
   for (uint32_t i = 0; i < 10; i++) {
     start = std::chrono::high_resolution_clock::now();

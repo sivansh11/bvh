@@ -10,7 +10,7 @@ class camera_t {
            math::vec3 up = {0, 1, 0})
       : _vfov(vfov), _from(from), _at(at), _up(up) {}
 
-  void set_dimentions(uint32_t width, uint32_t height) {
+  void set_dimensions(uint32_t width, uint32_t height) {
     _width  = width;
     _height = height;
 
