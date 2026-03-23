@@ -71,14 +71,26 @@ bool russian_roulette_terminate(sampler_t &sampler, math::vec3 &throughput) {
   return false;
 }
 
-math::vec3 sample_light(const scene_t    &scene,     //
-                        const bvh::bvh_t &tlas,      //
-                        const math::vec3 &hit_pos,   //
-                        const math::vec3 &normal,    //
-                        const math::vec3 &wo,        //
-                        const material_t &material,  //
-                        sampler_t &sampler, const math::vec2 &uv) {
-  if (!scene.light_instance_indices.size()) return math::vec3{0.f};
+struct light_intersection_t {
+  bool       is_valid = false;
+  material_t material;
+  math::vec3 wi;
+  math::vec3 normal;
+  float      dist_sq;
+  float      cos_theta;
+  float      cos_light;
+  float      pdf_area;
+};
+
+light_intersection_t find_visible_light(const scene_t    &scene,     //
+                                        const bvh::bvh_t &tlas,      //
+                                        const math::vec3 &hit_pos,   //
+                                        const math::vec3 &normal,    //
+                                        const math::vec3 &wo,        //
+                                        const material_t &material,  //
+                                        sampler_t        &sampler,   //
+                                        const math::vec2 &uv) {
+  if (!scene.light_instance_indices.size()) return {};
 
   float sample = sampler.randf();
   auto  itr = std::lower_bound(scene.light_cdfs.begin(), scene.light_cdfs.end(),
@@ -121,13 +133,37 @@ math::vec3 sample_light(const scene_t    &scene,     //
                        !(shadow_hit.instance_index == light_instance_index &&
                          shadow_hit.blas_hit.prim_index == triangle_index);
     if (!is_occluded) {
-      math::vec3 emission = scene.materials[light_instance_index].emitted(
-          sampler, -wi, light_normal, uv);
-      math::vec3 brdf = material.evaluate(sampler, wi, wo, normal, uv);
-      float      G    = (cos_theta * cos_light) / dist_sq;
-      float      pdf  = discrete_probability * light_record.inv_area;
-      return (brdf * emission * G) / pdf;
+      light_intersection_t li{};
+      li.is_valid  = true;
+      li.material  = scene.materials[light_instance_index];
+      li.wi        = wi;
+      li.normal    = light_normal;
+      li.dist_sq   = dist_sq;
+      li.cos_theta = cos_theta;
+      li.cos_light = cos_light;
+      li.pdf_area  = discrete_probability * light_record.inv_area;
+      return li;
     }
+  }
+  return {};
+}
+
+math::vec3 sample_light(const scene_t    &scene,     //
+                        const bvh::bvh_t &tlas,      //
+                        const math::vec3 &hit_pos,   //
+                        const math::vec3 &normal,    //
+                        const math::vec3 &wo,        //
+                        const material_t &material,  //
+                        sampler_t        &sampler,   //
+                        const math::vec2 &uv) {
+  light_intersection_t li = find_visible_light(scene, tlas, hit_pos, normal, wo,
+                                               material, sampler, uv);
+  if (li.is_valid) {
+    math::vec3 emission = li.material.emitted(sampler, -li.wi, li.normal, uv);
+    math::vec3 brdf     = material.evaluate(sampler, li.wi, wo, normal, uv);
+    float      G        = (li.cos_theta * li.cos_light) / li.dist_sq;
+    float      pdf      = li.pdf_area;
+    return (brdf * emission * G) / pdf;
   }
   return math::vec3{0.f};
 }
@@ -154,60 +190,18 @@ light_sample_t sample_light_mis(const scene_t    &scene,     //
                                 const math::vec3 &wo,        //
                                 const material_t &material,  //
                                 sampler_t &sampler, const math::vec2 &uv) {
-  if (!scene.light_instance_indices.size()) return {{}, 0.f};
-
-  float sample = sampler.randf();
-  auto  itr = std::lower_bound(scene.light_cdfs.begin(), scene.light_cdfs.end(),
-                               sample);
-  uint32_t light_record_index = std::distance(scene.light_cdfs.begin(), itr);
-  light_record_index =
-      std::min(light_record_index, (uint32_t)scene.light_cdfs.size() - 1);
-  const light_record_t &light_record = scene.light_records[light_record_index];
-  float                 discrete_probability = light_record.probability;
-  uint32_t              light_instance_index = light_record.instance_index;
-  const auto           &instance       = scene.instances[light_instance_index];
-  const auto           &blas           = scene.blases[instance.blas_index];
-  uint32_t              triangle_index = light_record.triangle_index;
-  auto                  triangle       = blas.triangles[triangle_index];
-  triangle.v0 = instance.transform * math::vec4{triangle.v0, 1.f};
-  triangle.v1 = instance.transform * math::vec4{triangle.v1, 1.f};
-  triangle.v2 = instance.transform * math::vec4{triangle.v2, 1.f};
-
-  math::vec3 p_world      = sampler.triangle(triangle);
-  math::vec3 light_normal = triangle.normal();
-
-  math::vec3 L       = p_world - hit_pos;
-  float      dist_sq = math::length2(L);
-  float      dist    = std::sqrt(dist_sq);
-  math::vec3 wi      = L / dist;
-
-  float cos_theta = math::dot(normal, wi);
-  float cos_light = math::dot(light_normal, -wi);
-
-  if (cos_theta > 0.0f && cos_light > 0.0f) {
-    math::vec3 offset_normal = math::dot(wi, normal) > 0.f ? normal : -normal;
-    math::vec3 shadow_origin = hit_pos + offset_normal * epsilon;
-    bvh::ray_t shadow_ray    = bvh::ray_t::create(shadow_origin, wi);
-    shadow_ray.tmin          = epsilon;
-    shadow_ray.tmax          = dist * 0.999f;
-    auto shadow_hit          = tlas::intersect_tlas(
-        tlas.nodes.data(), tlas.prim_indices.data(), scene.instances.data(),
-        scene.blases.data(), shadow_ray);
-    bool is_occluded = shadow_hit.did_intersect() &&
-                       !(shadow_hit.instance_index == light_instance_index &&
-                         shadow_hit.blas_hit.prim_index == triangle_index);
-    if (!is_occluded) {
-      math::vec3 emission = scene.materials[light_instance_index].emitted(
-          sampler, -wi, light_normal, uv);
-      math::vec3 brdf      = material.evaluate(sampler, wi, wo, normal, uv);
-      float      G         = (cos_theta * cos_light) / dist_sq;
-      float      pdf_area  = discrete_probability * light_record.inv_area;
-      float      pdf_light = pdf_area * (dist_sq / cos_light);
-      float      pdf_brdf  = material.pdf(sampler, wi, wo, normal, uv);
-      float      weight    = power_huristic(pdf_light, pdf_brdf);
-      math::vec3 radiance  = (brdf * emission * G * weight) / pdf_area;
-      return {radiance, pdf_light};
-    }
+  light_intersection_t li = find_visible_light(scene, tlas, hit_pos, normal, wo,
+                                               material, sampler, uv);
+  if (li.is_valid) {
+    math::vec3 emission  = li.material.emitted(sampler, -li.wi, li.normal, uv);
+    math::vec3 brdf      = material.evaluate(sampler, li.wi, wo, normal, uv);
+    float      G         = (li.cos_theta * li.cos_light) / li.dist_sq;
+    float      pdf_area  = li.pdf_area;
+    float      pdf_light = pdf_area * (li.dist_sq / li.cos_light);
+    float      pdf_brdf  = material.pdf(sampler, li.wi, wo, normal, uv);
+    float      weight    = power_huristic(pdf_light, pdf_brdf);
+    math::vec3 radiance  = (brdf * emission * G * weight) / pdf_area;
+    return {radiance, pdf_light};
   }
   return {{}, 0.f};
 }
