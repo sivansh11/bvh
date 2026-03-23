@@ -3,9 +3,9 @@
 
 #include <memory>
 #include <stdexcept>
+#include <type_traits>
 #include <unordered_map>
 
-#include "bvh/traversal.hpp"
 #include "common.hpp"
 #include "glm/geometric.hpp"
 #include "image.hpp"
@@ -18,18 +18,18 @@ inline bool is_normalized(const math::vec3& v) {
 }
 
 inline static std::unordered_map<std::string, std::shared_ptr<image_t>>
-    g_texture_cache;
+    texture_cache;
 
 inline std::shared_ptr<image_t> load_texture(
     const std::filesystem::path& path) {
   std::string key = path.string();
-  auto        itr = g_texture_cache.find(key);
-  if (itr != g_texture_cache.end()) {
+  auto        itr = texture_cache.find(key);
+  if (itr != texture_cache.end()) {
     return itr->second;
   }
 
-  auto texture         = image_t::load_from_path(path);
-  g_texture_cache[key] = texture;
+  auto texture       = image_t::load_from_path(path);
+  texture_cache[key] = texture;
   return texture;
 }
 
@@ -116,9 +116,6 @@ struct lambertian_t {
             const math::vec2& uv) const {
     float cos_theta = math::dot(wi, n);
     return cos_theta > 0.f ? cos_theta * math::one_over_pi<float>() : 0.f;
-  }
-  math::vec3 get_albedo(const math::vec2& uv) const {
-    return texture->sample(uv.x, uv.y);
   }
 };
 
@@ -258,43 +255,59 @@ struct material_t {
     ~as_t() {}
   } as;
 
+ private:
+  template <typename fn_t>
+  auto dispatch(fn_t&& fn) const {
+    switch (type) {
+      case material_type_t::e_lambertian:
+        return fn(as.lambertian);
+      case material_type_t::e_metal:
+        return fn(as.metal);
+      case material_type_t::e_dielectric:
+        return fn(as.dielectric);
+      case material_type_t::e_light:
+        return fn(as.light);
+
+      default:
+        throw std::runtime_error("unknown material");
+    }
+  }
+
+  template <typename fn_t>
+  auto dispatch(fn_t&& fn) {
+    switch (type) {
+      case material_type_t::e_lambertian:
+        return fn(as.lambertian);
+      case material_type_t::e_metal:
+        return fn(as.metal);
+      case material_type_t::e_dielectric:
+        return fn(as.dielectric);
+      case material_type_t::e_light:
+        return fn(as.light);
+
+      default:
+        throw std::runtime_error("unknown material");
+    }
+  }
+
+ public:
   material_t() : type(material_type_t::e_unknown) {}
 
   ~material_t() {
-    switch (type) {
-      case material_type_t::e_lambertian:
-        as.lambertian.~lambertian_t();
-        break;
-      case material_type_t::e_metal:
-        as.metal.~metal_t();
-        break;
-      case material_type_t::e_dielectric:
-        as.dielectric.~dielectric_t();
-        break;
-      case material_type_t::e_light:
-        as.light.~light_t();
-        break;
-      default:
-        break;
+    if (type != material_type_t::e_unknown) {
+      dispatch([](auto& m) {
+        using T = std::decay_t<decltype(m)>;
+        m.~T();
+      });
     }
   }
 
   material_t(const material_t& other) : type(other.type) {
-    switch (type) {
-      case material_type_t::e_lambertian:
-        new (&as.lambertian) lambertian_t(other.as.lambertian);
-        break;
-      case material_type_t::e_metal:
-        new (&as.metal) metal_t(other.as.metal);
-        break;
-      case material_type_t::e_dielectric:
-        new (&as.dielectric) dielectric_t(other.as.dielectric);
-        break;
-      case material_type_t::e_light:
-        new (&as.light) light_t(other.as.light);
-        break;
-      default:
-        break;
+    if (type != material_type_t::e_unknown) {
+      other.dispatch([this](const auto& m) {
+        using T = std::decay_t<decltype(m)>;
+        new (&as) T(m);
+      });
     }
   }
 
@@ -302,152 +315,44 @@ struct material_t {
     if (this == &other) return *this;
     this->~material_t();
     type = other.type;
-    switch (type) {
-      case material_type_t::e_lambertian:
-        new (&as.lambertian) lambertian_t(other.as.lambertian);
-        break;
-      case material_type_t::e_metal:
-        new (&as.metal) metal_t(other.as.metal);
-        break;
-      case material_type_t::e_dielectric:
-        new (&as.dielectric) dielectric_t(other.as.dielectric);
-        break;
-      case material_type_t::e_light:
-        new (&as.light) light_t(other.as.light);
-        break;
-      default:
-        break;
+    if (type != material_type_t::e_unknown) {
+      other.dispatch([this](const auto& m) {
+        using T = std::decay_t<decltype(m)>;
+        new (&as) T(m);
+      });
     }
     return *this;
   }
 
   bool is_specular() const {
-    switch (type) {
-      case material_type_t::e_lambertian:
-        return as.lambertian.is_specular();
-        break;
-      case material_type_t::e_metal:
-        return as.metal.is_specular();
-        break;
-      case material_type_t::e_dielectric:
-        return as.dielectric.is_specular();
-        break;
-      case material_type_t::e_light:
-        return as.light.is_specular();
-        break;
-      default:
-        throw std::runtime_error("unknown material");
-        break;
-    }
+    return dispatch([&](auto& m) { return m.is_specular(); });
   }
   math::vec3 emitted(sampler_t&        sampler,
                      const math::vec3& wo,  //
                      const math::vec3& n,   //
                      const math::vec2& uv) const {
-    switch (type) {
-      case material_type_t::e_lambertian:
-        return as.lambertian.emitted(sampler, wo, n, uv);
-        break;
-      case material_type_t::e_metal:
-        return as.metal.emitted(sampler, wo, n, uv);
-        break;
-      case material_type_t::e_dielectric:
-        return as.dielectric.emitted(sampler, wo, n, uv);
-        break;
-      case material_type_t::e_light:
-        return as.light.emitted(sampler, wo, n, uv);
-        break;
-      default:
-        throw std::runtime_error("unknown material");
-        break;
-    }
+    return dispatch([&](auto& m) { return m.emitted(sampler, wo, n, uv); });
   }
   math::vec3 evaluate(sampler_t&        sampler,
                       const math::vec3& wi,  //
                       const math::vec3& wo,  //
                       const math::vec3& n,   //
                       const math::vec2& uv) const {
-    switch (type) {
-      case material_type_t::e_lambertian:
-        return as.lambertian.evaluate(sampler, wi, wo, n, uv);
-        break;
-      case material_type_t::e_metal:
-        return as.metal.evaluate(sampler, wi, wo, n, uv);
-        break;
-      case material_type_t::e_dielectric:
-        return as.dielectric.evaluate(sampler, wi, wo, n, uv);
-        break;
-      case material_type_t::e_light:
-        return as.light.evaluate(sampler, wi, wo, n, uv);
-        break;
-      default:
-        throw std::runtime_error("unknown material");
-        break;
-    }
+    return dispatch(
+        [&](auto& m) { return m.evaluate(sampler, wi, wo, n, uv); });
   }
   std::pair<bool, scatter_sample_t> sample(sampler_t&        sampler,
                                            const math::vec3& wo,  //
                                            const math::vec3& n,
                                            const math::vec2& uv) const {
-    switch (type) {
-      case material_type_t::e_lambertian:
-        return as.lambertian.sample(sampler, wo, n, uv);
-        break;
-      case material_type_t::e_metal:
-        return as.metal.sample(sampler, wo, n, uv);
-        break;
-      case material_type_t::e_dielectric:
-        return as.dielectric.sample(sampler, wo, n, uv);
-        break;
-      case material_type_t::e_light:
-        return as.light.sample(sampler, wo, n, uv);
-        break;
-      default:
-        throw std::runtime_error("unknown material");
-        break;
-    }
+    return dispatch([&](auto& m) { return m.sample(sampler, wo, n, uv); });
   }
   float pdf(sampler_t&        sampler,  //
             const math::vec3& wi,       //
             const math::vec3& wo,       //
             const math::vec3& n,        //
             const math::vec2& uv) const {
-    switch (type) {
-      case material_type_t::e_lambertian:
-        return as.lambertian.pdf(sampler, wi, wo, n, uv);
-        break;
-      case material_type_t::e_metal:
-        return as.metal.pdf(sampler, wi, wo, n, uv);
-        break;
-      case material_type_t::e_dielectric:
-        return as.dielectric.pdf(sampler, wi, wo, n, uv);
-        break;
-      case material_type_t::e_light:
-        return as.light.pdf(sampler, wi, wo, n, uv);
-        break;
-      default:
-        throw std::runtime_error("unknown material");
-        break;
-    }
-  }
-  math::vec3 get_albedo(const math::vec2& uv) const {
-    switch (type) {
-      case material_type_t::e_lambertian:
-        return as.lambertian.get_albedo(uv);
-        break;
-      case material_type_t::e_metal:
-        return as.metal.albedo;
-        break;
-      case material_type_t::e_dielectric:
-        return math::vec3{1.f};
-        break;
-      case material_type_t::e_light:
-        return as.light.emission;
-        break;
-      default:
-        return math::vec3{0.f};
-        break;
-    }
+    return dispatch([&](auto& m) { return m.pdf(sampler, wi, wo, n, uv); });
   }
 };
 
