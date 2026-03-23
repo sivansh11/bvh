@@ -1,7 +1,7 @@
 settings:
   nee: true
   mis: true
-  spp: 4
+  spp: 100
   background: [0.05, 0.05, 0.05]
 
 camera:

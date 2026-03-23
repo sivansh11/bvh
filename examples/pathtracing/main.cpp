@@ -472,7 +472,7 @@ int main(int argc, char **argv) {
 
   render(16, config.max_spp, 4, image, argv[2],
          [&](uint32_t x, uint32_t y, uint32_t current_spp) -> math::vec3 {
-           sampler_t sampler = create_white_noise_sampler(
+           sampler_t sampler = create_golden_ratio_sampler(
                x, y, image._width, image._height, current_spp);
            float jitter_x = static_cast<float>(x) + (sampler.randf() - 0.5f);
            float jitter_y = static_cast<float>(y) + (sampler.randf() - 0.5f);
