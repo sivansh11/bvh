@@ -1,23 +1,43 @@
 #ifndef SAMPLER_HPP
 #define SAMPLER_HPP
 
-#include <memory>
-#include <random>
+#include <stdexcept>
 
-#include "image.hpp"
-#include "math/math.hpp"
 #include "math/triangle.hpp"
 
-struct sampler_t {
-  std::mt19937                          rng{};
-  std::uniform_real_distribution<float> dist{0.0, 1.0};
+enum class sampler_type_t {
+  e_unknown,
+  e_white_noise,
+};
 
-  sampler_t(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
-            uint32_t spp) {
-    rng.seed(x + (y * width) + (spp * width * height));
+inline static uint32_t pcg_hash(uint32_t input) {
+  uint32_t state = input * 747796405u + 2891336453u;
+  uint32_t word  = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+  return (word >> 22u) ^ word;
+}
+
+struct white_noise_sampler_t {
+  uint32_t state = 0;
+
+  float randf() {
+    uint32_t hash = pcg_hash(state++);
+    return static_cast<float>(hash) * (1.f / 4294967296.f);
   }
+};
 
-  float randf() { return dist(rng); }
+struct sampler_t {
+  sampler_type_t type = sampler_type_t::e_unknown;
+  union as_t {
+    white_noise_sampler_t white_noise_sampler;
+  } as;
+  float randf() {
+    switch (type) {
+      case sampler_type_t::e_white_noise:
+        return as.white_noise_sampler.randf();
+      default:
+        throw std::runtime_error("unknown sampler");
+    }
+  }
 
   math::vec3 unit_vector() {
     float u1 = randf();
@@ -39,8 +59,9 @@ struct sampler_t {
   }
 
   uint32_t index(uint32_t n) {
-    std::uniform_int_distribution<uint32_t> _dist(0, n - 1);
-    return _dist(rng);
+    if (n <= 1) return 0;
+    float r = randf();
+    return std::min(static_cast<uint32_t>(r * n), n - 1);
   }
 
   math::vec3 triangle(const math::triangle_t &triangle) {
@@ -54,5 +75,17 @@ struct sampler_t {
            v * (triangle.v2 - triangle.v0);
   }
 };
+
+inline sampler_t create_white_noise_sampler(uint32_t x,       //
+                                            uint32_t y,       //
+                                            uint32_t width,   //
+                                            uint32_t height,  //
+                                            uint32_t spp) {
+  sampler_t sampler{};
+  sampler.type = sampler_type_t::e_white_noise;
+  uint32_t pixel_index = x + y * width;
+  sampler.as.white_noise_sampler.state = pcg_hash(pixel_index) ^ pcg_hash(spp);
+  return sampler;
+}
 
 #endif
