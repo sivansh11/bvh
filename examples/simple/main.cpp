@@ -25,21 +25,21 @@ float clamp(float val, float min, float max) {
 }
 
 struct image_t {
-  image_t(uint32_t width, uint32_t height) : _width(width), _height(height) {
-    _p_pixels = new math::vec4[_width * _height];
+  image_t(uint32_t width, uint32_t height) : width(width), height(height) {
+    _p_pixels = new math::vec4[width * height];
   }
   ~image_t() { delete[] _p_pixels; }
 
   math::vec4 &at(uint32_t x, uint32_t y) {
     assert(y * _width + x < _width * _height);
-    return _p_pixels[y * _width + x];
+    return _p_pixels[y * width + x];
   }
 
   void to_disk(const std::filesystem::path &path) {
     std::stringstream s;
-    s << "P3\n" << _width << ' ' << _height << "\n255\n";
-    for (int j = _height - 1; j >= 0; j--)
-      for (int i = 0; i < _width; i++) {
+    s << "P3\n" << width << ' ' << height << "\n255\n";
+    for (int j = height - 1; j >= 0; j--)
+      for (int i = 0; i < width; i++) {
         math::vec4 pixel = at(i, j);
         s << uint32_t(clamp(pixel.r, 0, 1) * 255) << ' '
           << uint32_t(clamp(pixel.g, 0, 1) * 255) << ' '
@@ -54,7 +54,7 @@ struct image_t {
     file.close();
   }
 
-  uint32_t    _width, _height;
+  uint32_t    width, height;
   math::vec4 *_p_pixels;
 };
 
@@ -335,20 +335,20 @@ int main(int argc, char **argv) {
 
   image_t  image{640, 420};
   camera_t camera{90.f, {0, 1, 2}, {0, 1, 0}};
-  camera.set_dimensions(image._width, image._height);
+  camera.set_dimensions(image.width, image.height);
 
-  for (uint32_t y = 0; y < image._height; y++)
-    for (uint32_t x = 0; x < image._width; x++) {
+  for (uint32_t y = 0; y < image.height; y++)
+    for (uint32_t x = 0; x < image.width; x++) {
       auto [O, D] = camera.ray_gen(x, y);
       ray_t ray   = ray_t::create(O, D);
       auto  hit   = intersect_bvh(bvh.nodes.data(), bvh.nodes.size(),
                                   bvh.prim_indices.data(), bvh.prim_indices.size(),
                                   triangles.data(), triangles.size(), ray);
       if (hit.did_intersect()) {
-        image.at(x, image._height - y - 1) =
+        image.at(x, image.height - y - 1) =
             math::vec4{random_color_from_hit(hit.prim_index), 1};
       } else {
-        image.at(x, image._height - y - 1) = math::vec4{0, 0, 0, 0};
+        image.at(x, image.height - y - 1) = math::vec4{0, 0, 0, 0};
       }
     }
 

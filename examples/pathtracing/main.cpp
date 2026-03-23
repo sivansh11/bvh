@@ -459,14 +459,14 @@ int main(int argc, char **argv) {
 
   image_t image{640, 640};
   // image_t  image{1920, 1200};
-  config.camera.set_dimensions(image._width, image._height);
+  config.camera.set_dimensions(image.width, image.height);
 
   auto start = std::chrono::high_resolution_clock::now();
 
   render(16, config.max_spp, 4, image, argv[2],
          [&](uint32_t x, uint32_t y, uint32_t current_spp) -> math::vec3 {
            sampler_t sampler = create_white_noise_sampler(
-               x, y, image._width, image._height, current_spp);
+               x, y, image.width, image.height, current_spp);
            float jitter_x = static_cast<float>(x) + (sampler.randf() - 0.5f);
            float jitter_y = static_cast<float>(y) + (sampler.randf() - 0.5f);
 
@@ -490,11 +490,11 @@ int main(int argc, char **argv) {
             << "ms" << "\n";  //
 
   math::vec3 sum{0, 0, 0};
-  for (int j = image._height - 1; j >= 0; j--)
-    for (int i = 0; i < image._width; i++) {
+  for (int j = image.height - 1; j >= 0; j--)
+    for (int i = 0; i < image.width; i++) {
       sum += image.at(i, j);
     }
-  std::cout << "pixel average: " << sum / float(image._width * image._height)
+  std::cout << "pixel average: " << sum / float(image.width * image.height)
             << '\n';
 
   return 0;

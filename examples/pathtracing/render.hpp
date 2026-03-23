@@ -13,8 +13,8 @@
 template <typename fn_t>
 void render(uint32_t max_threads, uint32_t max_spp, uint32_t save_interval,
             image_t &image, const std::string name, fn_t fn) {
-  const uint32_t          width      = image._width;
-  const uint32_t          height     = image._height;
+  const uint32_t          width      = image.width;
+  const uint32_t          height     = image.height;
   const uint32_t          num_pixels = width * height;
   std::vector<math::vec3> accum(num_pixels, math::vec3{0.f});
   uint32_t                current_spp = 0;
