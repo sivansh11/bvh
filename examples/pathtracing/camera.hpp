@@ -39,10 +39,10 @@ class camera_t {
         viewport_upper_left + 0.5f * (_pixel_delta_u + _pixel_delta_v);
   }
 
-  std::pair<math::vec3, math::vec3> ray_gen(uint32_t x, uint32_t y) {
+  std::pair<math::vec3, math::vec3> ray_gen(float x, float y) {
     assert(_width != 0 && _height != 0);
-    math::vec3 pixel_center = _pixel_00_loc + (float(x) * _pixel_delta_u) +
-                              (float(y) * _pixel_delta_v);
+    math::vec3 pixel_center =
+        _pixel_00_loc + (x * _pixel_delta_u) + (y * _pixel_delta_v);
     math::vec3 direction = pixel_center - _from;
     return {_from, direction};
   }
