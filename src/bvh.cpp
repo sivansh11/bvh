@@ -1148,7 +1148,7 @@ reinsertion_t find_reinsertion(const bvh_t &bvh, uint32_t index,
 
 void refit_from(bvh_t &bvh, uint32_t index,
                 const std::vector<uint32_t> &parents) {
-  do {
+  while (true) {
     node_t &node = bvh.nodes[index];
     if (!node.is_leaf()) {
       math::aabb_t aabb = bvh.nodes[node.index + 0].aabb().grow(
@@ -1156,8 +1156,9 @@ void refit_from(bvh_t &bvh, uint32_t index,
       node.min = aabb.min;
       node.max = aabb.max;
     }
+    if (index == 0) break;
     index = parents[index];
-  } while (index != 0);
+  }
 }
 
 void reinsert_node(bvh_t &bvh, uint32_t from, uint32_t to,
@@ -1187,9 +1188,26 @@ void reinsert_node(bvh_t &bvh, uint32_t from, uint32_t to,
   refit_from(bvh, parent_index, parents);
 }
 
-std::array<uint32_t, 5> get_conflicts(uint32_t from, uint32_t to,
-                                      const std::vector<uint32_t> &parents) {
-  return {to, from, sibling(from), parents[to], parents[from]};
+std::vector<uint32_t> get_conflicts(uint32_t from, uint32_t to,
+                                    const std::vector<uint32_t> &parents) {
+  std::vector<uint32_t> conflicts;
+  conflicts.push_back(from);
+  conflicts.push_back(sibling(from));
+  conflicts.push_back(to);
+
+  uint32_t curr = parents[from];
+  while (curr != 0) {
+    conflicts.push_back(curr);
+    curr = parents[curr];
+  }
+  conflicts.push_back(0);
+
+  curr = parents[to];
+  while (curr != 0) {
+    conflicts.push_back(curr);
+    curr = parents[curr];
+  }
+  return conflicts;
 }
 
 void layout_optimize(bvh_t &bvh) {
