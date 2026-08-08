@@ -575,7 +575,7 @@ int main(int argc, char **argv) {
 
   std::cout << "depth of bvh: " << bvh::depth_of_bvh(bvh) << '\n';
   float sah = bvh::sah_of_bvh(bvh);
-  float epo = bvh::epo_of_bvh(bvh, triangles);
+  float epo = bvh::epo_of_bvh(bvh, triangles, opts.threads);
   std::cout << "sah of bvh: " << sah << '\n';
   std::cout << "epo of bvh: " << epo << '\n';
   float alpha = 0.71;

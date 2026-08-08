@@ -200,11 +200,11 @@ std::set<uint32_t> get_primitives_in_node(const bvh_t &bvh,
 }
 
 float epo_of_bvh(const bvh_t                         &bvh,
-                 const std::vector<math::triangle_t> &triangles) {
+                 const std::vector<math::triangle_t> &triangles,
+                 uint32_t                             num_threads) {
   float total_triangle_area = 0;
   for (const auto &tri : triangles) total_triangle_area += tri.area();
 
-  const uint32_t num_threads = 16;
   float          epo_per_thread[num_threads];
   for (auto &epo : epo_per_thread) epo = 0;
 
