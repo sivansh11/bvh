@@ -9,6 +9,8 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <thread>
+#include <vector>
 
 #include "bvh/bvh.hpp"
 #include "bvh/traversal.hpp"
@@ -192,7 +194,8 @@ struct reinsert_opts_t {
 
 struct options_t {
   std::filesystem::path  model_path;
-  uint32_t               reruns = 10;
+  uint32_t               reruns  = 10;
+  uint32_t               threads = 8;
   builder_opts_t         builder;
   pre_processing_type_t  pre_processing = pre_processing_type_t::e_none;
   presplit_opts_t        presplit;
@@ -207,6 +210,7 @@ void print_usage(std::ostream &stream) {
       << "Options:\n"
       << "  -m, --model <path>          model file path (required)\n"
       << "  -n, --reruns <count>        number of render reruns (default 10)\n"
+      << "  -t, --threads <count>      number of render threads (default 8)\n"
       << "  -b, --builder <builder>     builder algorithm and per-builder "
          "options\n"
       << "                                "
@@ -375,19 +379,20 @@ options_t parse_options(int argc, char **argv) {
   options_t opts;
 
   static const struct option long_options[] = {
-      {"model", optional_argument, nullptr, 'm'},
-      {"reruns", optional_argument, nullptr, 'n'},
-      {"builder", optional_argument, nullptr, 'b'},
+      {"model", required_argument, nullptr, 'm'},
+      {"reruns", required_argument, nullptr, 'n'},
+      {"threads", required_argument, nullptr, 't'},
+      {"builder", required_argument, nullptr, 'b'},
       {"presplit", no_argument, nullptr, 1000},
-      {"presplit-factor", optional_argument, nullptr, 1001},
+      {"presplit-factor", required_argument, nullptr, 1001},
       {"reinsert", no_argument, nullptr, 1002},
-      {"reinsert-ratio", optional_argument, nullptr, 1003},
-      {"reinsert-itr", optional_argument, nullptr, 1004},
+      {"reinsert-ratio", required_argument, nullptr, 1003},
+      {"reinsert-itr", required_argument, nullptr, 1004},
       {"help", no_argument, nullptr, 'h'},
       {nullptr, 0, nullptr, 0}};
 
   int opt;
-  while ((opt = getopt_long(argc, argv, "m:n:b:h", long_options, nullptr)) !=
+  while ((opt = getopt_long(argc, argv, "m:n:t:b:h", long_options, nullptr)) !=
          -1) {
     switch (opt) {
       case 'm':
@@ -395,6 +400,9 @@ options_t parse_options(int argc, char **argv) {
         break;
       case 'n':
         opts.reruns = parse_u32("reruns", optarg);
+        break;
+      case 't':
+        opts.threads = parse_u32("threads", optarg);
         break;
       case 'b':
         opts.builder = parse_builder(optarg);
@@ -433,6 +441,33 @@ options_t parse_options(int argc, char **argv) {
     throw std::runtime_error("Missing required option '-m <model>'");
 
   return opts;
+}
+
+template <typename fn_t>
+void render(uint32_t threads, image_t &image, fn_t fn) {
+  std::vector<std::pair<uint32_t, uint32_t>> work;
+  for (uint32_t y = 0; y < image.height; y++)
+    for (uint32_t x = 0; x < image.width; x++) work.emplace_back(x, y);
+
+  if (threads <= 1) {
+    for (const auto &[x, y] : work)
+      image.at(x, image.height - y - 1) = fn(x, y);
+    return;
+  }
+
+  std::vector<std::thread> workers;
+  for (uint32_t thread_index = 0; thread_index < threads; thread_index++) {
+    workers.emplace_back(
+        [&](uint32_t thread_index) {
+          for (uint32_t work_index = thread_index; work_index < work.size();
+               work_index += threads) {
+            auto [x, y]                       = work[work_index];
+            image.at(x, image.height - y - 1) = fn(x, y);
+          }
+        },
+        thread_index);
+  }
+  for (auto &worker : workers) worker.join();
 }
 
 void print_config(const options_t &opts, std::ostream &stream) {
@@ -488,7 +523,7 @@ void print_config(const options_t &opts, std::ostream &stream) {
            << ", max_itr=" << opts.reinsert.max_itr << ")\n";
   }
 
-  stream << "reruns: " << opts.reruns << '\n';
+  stream << "reruns: " << opts.reruns << " threads: " << opts.threads << '\n';
 }
 
 int main(int argc, char **argv) {
@@ -554,21 +589,19 @@ int main(int argc, char **argv) {
 
   for (uint32_t i = 0; i < opts.reruns; i++) {
     start = std::chrono::high_resolution_clock::now();
-    for (uint32_t y = 0; y < image.height; y++)
-      for (uint32_t x = 0; x < image.width; x++) {
-        auto [O, D]    = camera.ray_gen(x, y);
-        bvh::ray_t ray = bvh::ray_t::create(O, D);
-        auto hit = bvh::intersect_bvh(bvh.nodes.data(), bvh.prim_indices.data(),
-                                      triangles.data(), ray);
-        if (hit.did_intersect()) {
-          image.at(x, image.height - y - 1) =
-              turbo_color_map((((hit.node_intersections - 1) / 2.f) +
-                               hit.triangle_intersections * 1.1f) /
-                              150.f);
-        } else {
-          image.at(x, image.height - y - 1) = math::vec4{0, 0, 0, 0};
-        }
+    render(opts.threads, image, [&](uint32_t x, uint32_t y) {
+      auto [O, D]    = camera.ray_gen(x, y);
+      bvh::ray_t ray = bvh::ray_t::create(O, D);
+      auto hit = bvh::intersect_bvh(bvh.nodes.data(), bvh.prim_indices.data(),
+                                    triangles.data(), ray);
+      if (hit.did_intersect()) {
+        return turbo_color_map((((hit.node_intersections - 1) / 2.f) +
+                                hit.triangle_intersections * 1.1f) /
+                               150.f);
+      } else {
+        return math::vec4{0, 0, 0, 0};
       }
+    });
     end = std::chrono::high_resolution_clock::now();
     std::cout << "render took: "
               << std::chrono::duration_cast<std::chrono::milliseconds>(end -
