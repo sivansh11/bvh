@@ -43,8 +43,8 @@ struct ray_t {
     ray.origin    = origin;
     ray.direction = math::normalize(direction);
     ray.inverse_direction =
-        math::vec3(safe_inverse(direction.x), safe_inverse(direction.y),
-                   safe_inverse(direction.z));
+        math::vec3(safe_inverse(ray.direction.x), safe_inverse(ray.direction.y),
+                   safe_inverse(ray.direction.z));
     ray.tmax = 1e30;
     ray.tmin = 0.0001;
     return ray;
