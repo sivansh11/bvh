@@ -584,7 +584,8 @@ int main(int argc, char **argv) {
 
   image_t image{640, 420};
   // camera_t camera{90.f, {0, 1, 2}, {0, 1, 0}};
-  camera_t camera{90.f, {0, 50, 0}, {1, 50, 0}};
+  // camera_t camera{90.f, {0, 50, 0}, {1, 50, 0}};
+  camera_t camera{90.f, {0, 50, 0}, {-1, 50, 0}};
   camera.set_dimensions(image.width, image.height);
 
   for (uint32_t i = 0; i < opts.reruns; i++) {
