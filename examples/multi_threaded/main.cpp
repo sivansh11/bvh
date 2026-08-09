@@ -93,7 +93,7 @@ class camera_t {
     assert(_width != 0 && _height != 0);
     math::vec3 pixel_center = _pixel_00_loc + (float(x) * _pixel_delta_u) +
                               (float(y) * _pixel_delta_v);
-    math::vec3 direction = pixel_center - _from;
+    math::vec3 direction    = pixel_center - _from;
     return {_from, direction};
   }
 
@@ -128,7 +128,7 @@ void render(uint32_t max_threads, image_t &image, fn_t fn) {
         [&](uint32_t thread_index) {
           for (uint32_t work_index = thread_index; work_index < work.size();
                work_index += max_threads) {
-            auto [x, y]                        = work[work_index];
+            auto [x, y]                       = work[work_index];
             image.at(x, image.height - y - 1) = fn(x, y);
           }
         },
@@ -291,9 +291,13 @@ int main(int argc, char **argv) {
                                     triangles.data(), ray);
       if (hit.did_intersect()) {
         // return math::vec4{random_color_from_hit(hit.prim_index), 1};
-        return turbo_color_map((((hit.node_intersections - 1) / 2.f) +
-                                hit.triangle_intersections * 1.1f) /
-                               150.f);
+        // if (hit.did_intersect()) {
+        return turbo_color_map(
+            (hit.node_intersections + hit.triangle_intersections * 1.1f) /
+            150.f);
+        // } else {
+        // return math::vec4{0, 0, 0, 0};
+        // }
         // return turbo_color_map((hit.triangle_intersections * 1.1f) / 50.f);
         // return turbo_color_map(((hit.node_intersections - 1) / 2.f) / 150.f);
       } else {

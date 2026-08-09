@@ -594,13 +594,12 @@ int main(int argc, char **argv) {
       bvh::ray_t ray = bvh::ray_t::create(O, D);
       auto hit = bvh::intersect_bvh(bvh.nodes.data(), bvh.prim_indices.data(),
                                     triangles.data(), ray);
-      if (hit.did_intersect()) {
-        return turbo_color_map((((hit.node_intersections - 1) / 2.f) +
-                                hit.triangle_intersections * 1.1f) /
-                               150.f);
-      } else {
-        return math::vec4{0, 0, 0, 0};
-      }
+      // if (hit.did_intersect()) {
+      return turbo_color_map(
+          (hit.node_intersections + hit.triangle_intersections * 1.1f) / 150.f);
+      // } else {
+      // return math::vec4{0, 0, 0, 0};
+      // }
     });
     end = std::chrono::high_resolution_clock::now();
     std::cout << "render took: "
