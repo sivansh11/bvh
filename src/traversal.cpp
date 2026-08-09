@@ -58,7 +58,6 @@ hit_t intersect_bvh(const bvh::node_t *nodes, const uint32_t *indices,
   uint32_t stack_top = 0;
 
   bvh::node_t root = nodes[0];
-  hit.node_intersections++;
   if (!intersect_aabb(root.min, root.max, ray).did_intersect()) return hit;
 
   if (root.is_leaf()) {
@@ -84,7 +83,7 @@ hit_t intersect_bvh(const bvh::node_t *nodes, const uint32_t *indices,
     bvh::node_t left  = nodes[current + 0];
     bvh::node_t right = nodes[current + 1];
 
-    hit.node_intersections += 2;
+    hit.node_intersections += 1;
     aabb_hit_t left_hit  = intersect_aabb(left.min, left.max, ray);
     aabb_hit_t right_hit = intersect_aabb(right.min, right.max, ray);
 
