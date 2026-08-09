@@ -159,7 +159,7 @@ float polygon_area(const std::vector<math::vec3> &polygon) {
 std::set<uint32_t> get_primitives_intersecting_node(
     const bvh_t &bvh, const math::aabb_t &aabb,
     const std::vector<math::triangle_t> &triangles) {
-  uint32_t stack[64], stack_top = 0;
+  uint32_t stack[128], stack_top = 0;
   stack[stack_top++] = 0;
   std::set<uint32_t> intersections{};
   while (stack_top) {
@@ -183,7 +183,7 @@ std::set<uint32_t> get_primitives_intersecting_node(
 std::set<uint32_t> get_primitives_in_node(const bvh_t &bvh,
                                           uint32_t     node_index) {
   std::set<uint32_t> indices;
-  uint32_t           stack[64], stack_top = 0;
+  uint32_t           stack[128], stack_top = 0;
   stack[stack_top++] = node_index;
   while (stack_top) {
     const node_t &node = bvh.nodes[stack[--stack_top]];
@@ -205,7 +205,7 @@ float epo_of_bvh(const bvh_t                         &bvh,
   float total_triangle_area = 0;
   for (const auto &tri : triangles) total_triangle_area += tri.area();
 
-  float          epo_per_thread[num_threads];
+  float epo_per_thread[num_threads];
   for (auto &epo : epo_per_thread) epo = 0;
 
   std::vector<std::thread> threads{};
@@ -696,7 +696,7 @@ std::pair<std::vector<math::aabb_t>, std::vector<uint32_t>> presplit(
   std::vector<math::aabb_t> aabbs(total_splits);
   std::vector<uint32_t>     tri_indices(total_splits);
 
-  std::pair<math::aabb_t, uint32_t> stack[64];
+  std::pair<math::aabb_t, uint32_t> stack[128];
 
   uint32_t split_index = 0;
 
@@ -781,7 +781,7 @@ void presplit_remove_indirection(bvh_t                       &bvh,
 
 void presplit_remove_duplicates(bvh_t &bvh) {
   std::vector<uint32_t> prim_indices{};
-  uint32_t              stack[64], stack_top = 0;
+  uint32_t              stack[128], stack_top = 0;
   stack[stack_top++] = 0;
 
   while (stack_top) {
@@ -840,9 +840,9 @@ uint32_t find_best_node(const std::vector<node_t> &nodes, uint32_t node_index,
     }
   }
   if (best_index == node_index) {
-    uint32_t neighbor = node_index + 1 < node_count ? node_index + 1
-                                                    : node_index - 1;
-    best_index        = neighbor;
+    uint32_t neighbor =
+        node_index + 1 < node_count ? node_index + 1 : node_index - 1;
+    best_index = neighbor;
   }
   return best_index;
 }
@@ -922,9 +922,9 @@ bvh_t build_bvh_ploc(const std::vector<math::aabb_t> &aabbs, uint32_t grid_dim,
                   (centers[i] - center_aabb.min) *
                       (math::vec3{float(grid)} /
                        math::vec3{center_aabb.max - center_aabb.min})));
-    morton_codes[i] = encode_morton(uint32_t(grid_position.x),
-                                    uint32_t(grid_position.y),
-                                    uint32_t(grid_position.z), morton_bits);
+    morton_codes[i] =
+        encode_morton(uint32_t(grid_position.x), uint32_t(grid_position.y),
+                      uint32_t(grid_position.z), morton_bits);
   }
 
   std::sort(bvh.prim_indices.begin(), bvh.prim_indices.end(),
@@ -1025,7 +1025,7 @@ bvh_t build_bvh_sweep_sah(const std::vector<math::aabb_t> &aabbs,
   bvh.prim_indices = sorted_prim_indices[0];
 
   uint32_t depth = depth_of_bvh(bvh);
-  if (depth >= 64) {
+  if (depth >= 128) {
     uint32_t min = std::numeric_limits<uint32_t>::max();
     uint32_t max = 0;
     for (const auto &node : bvh.nodes) {
@@ -1036,7 +1036,7 @@ bvh_t build_bvh_sweep_sah(const std::vector<math::aabb_t> &aabbs,
     std::cout << "min primitives: " << min << '\n';
     std::cout << "max primitives: " << max << '\n';
     std::cout << depth << ' ' << bvh.nodes.size() << '\n';
-    throw std::runtime_error("depth >= 64");
+    throw std::runtime_error("depth >= 128");
   }
 
   return bvh;
@@ -1214,7 +1214,7 @@ void layout_optimize(bvh_t &bvh) {
   std::vector<node_t>   nodes;
   std::vector<uint32_t> new_to_old(bvh.nodes.size());
   std::vector<uint32_t> old_to_new(bvh.nodes.size());
-  uint32_t              stack[64], stack_top = 0;
+  uint32_t              stack[128], stack_top = 0;
   stack[stack_top++] = 0;
   node_t root        = bvh.nodes[0];
   nodes.push_back(root);
