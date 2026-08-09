@@ -805,20 +805,19 @@ void presplit_remove_duplicates(bvh_t &bvh) {
   bvh.prim_indices = prim_indices;
 }
 
-uint64_t split_morton(uint64_t x, int log_bits) {
-  const int bit_count = 1 << log_bits;
-  uint64_t  mask      = ((uint64_t)-1) >> (bit_count / 2);
-  x &= mask;
-  for (int i = log_bits - 1, n = 1 << i; i > 0; --i, n >>= 1) {
-    mask = (mask | (mask << n)) & ~(mask << (n / 2));
-    x    = (x | (x << n)) & mask;
-  }
+uint32_t spread_morton_bits(uint32_t x) {
+  x &= 0x3FFu;
+  x = (x | (x << 16)) & 0x030000FFu;
+  x = (x | (x << 8)) & 0x0300F00Fu;
+  x = (x | (x << 4)) & 0x030C30C3u;
+  x = (x | (x << 2)) & 0x09249249u;
   return x;
 }
 
-uint64_t encode_morton(uint64_t x, uint64_t y, uint64_t z, int log_bits) {
-  return split_morton(x, log_bits) | (split_morton(y, log_bits) << 1) |
-         (split_morton(z, log_bits) << 2);
+uint32_t encode_morton(uint32_t x, uint32_t y, uint32_t z, int log_bits) {
+  const uint32_t mask = (1u << log_bits) - 1u;
+  return spread_morton_bits(x & mask) | (spread_morton_bits(y & mask) << 1) |
+         (spread_morton_bits(z & mask) << 2);
 }
 
 uint32_t find_best_node(const std::vector<node_t> &nodes, uint32_t node_index,
@@ -827,6 +826,7 @@ uint32_t find_best_node(const std::vector<node_t> &nodes, uint32_t node_index,
   uint32_t       best_index = node_index;
   float          best_area  = math::infinity;
   const uint32_t node_count = nodes.size();
+  if (search_radius == 0) search_radius = 1;
   uint32_t start = node_index > search_radius ? node_index - search_radius : 0;
   uint32_t stop  = node_index + search_radius + 1 < node_count
                        ? node_index + search_radius + 1
@@ -838,6 +838,11 @@ uint32_t find_best_node(const std::vector<node_t> &nodes, uint32_t node_index,
       best_area  = area;
       best_index = index;
     }
+  }
+  if (best_index == node_index) {
+    uint32_t neighbor = node_index + 1 < node_count ? node_index + 1
+                                                    : node_index - 1;
+    best_index        = neighbor;
   }
   return best_index;
 }
@@ -906,16 +911,20 @@ bvh_t build_bvh_ploc(const std::vector<math::aabb_t> &aabbs, uint32_t grid_dim,
     center_aabb.grow(centers[i]);
   }
 
+  const int      morton_bits = std::max(1, std::min(10, int(log_bits)));
+  const uint32_t grid        = std::min(grid_dim, 1u << morton_bits);
+
   std::vector<uint32_t> morton_codes(aabbs.size());
   for (uint32_t i = 0; i < aabbs.size(); i++) {
     math::vec3 grid_position = math::min(
-        math::vec3{float(grid_dim - 1)},
+        math::vec3{float(grid - 1)},
         math::max(math::vec3{0},
                   (centers[i] - center_aabb.min) *
-                      (math::vec3{float(grid_dim)} /
+                      (math::vec3{float(grid)} /
                        math::vec3{center_aabb.max - center_aabb.min})));
-    morton_codes[i] = encode_morton(grid_position.x, grid_position.y,
-                                    grid_position.z, log_bits);
+    morton_codes[i] = encode_morton(uint32_t(grid_position.x),
+                                    uint32_t(grid_position.y),
+                                    uint32_t(grid_position.z), morton_bits);
   }
 
   std::sort(bvh.prim_indices.begin(), bvh.prim_indices.end(),
