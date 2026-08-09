@@ -47,7 +47,7 @@ struct image_t {
   }
 
   math::vec3& at(uint32_t x, uint32_t y) {
-    assert(y * _width + x < _width * _height);
+    assert(y * width + x < width * height);
     return _p_pixels[y * width + x];
   }
 

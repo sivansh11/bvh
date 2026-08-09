@@ -31,7 +31,7 @@ struct image_t {
   ~image_t() { delete[] _p_pixels; }
 
   math::vec4 &at(uint32_t x, uint32_t y) {
-    assert(y * _width + x < _width * _height);
+    assert(y * width + x < width * height);
     return _p_pixels[y * width + x];
   }
 
