@@ -143,4 +143,119 @@ hit_t intersect_bvh(const bvh::node_t *nodes, const uint32_t *indices,
   return hit;
 }
 
+inline aabb_hit_t intersect_soa_aabb(const soa_bvh_t &soa_bvh,
+                                     const uint32_t node, const ray_t ray) {
+  const math::vec4 min     = soa_bvh.mins[node];
+  const math::vec4 max     = soa_bvh.maxs[node];
+  const math::vec4 origin  = math::vec4(ray.origin, 0.f);
+  const math::vec4 inv_dir = math::vec4(ray.inverse_direction, 1.f);
+
+  const math::vec4 tmin =
+      math::min((min - origin) * inv_dir, (max - origin) * inv_dir);
+  const math::vec4 tmax =
+      math::max((min - origin) * inv_dir, (max - origin) * inv_dir);
+  float _tmin =
+      math::max(tmin[0], math::max(tmin[1], math::max(tmin[2], ray.tmin)));
+  float _tmax =
+      math::min(tmax[0], math::min(tmax[1], math::min(tmax[2], ray.tmax)));
+  aabb_hit_t hit = aabb_hit_t(_tmin, _tmax);
+  return hit;
+}
+
+hit_t intersect_soa_bvh(const soa_bvh_t        &soa_bvh,
+                        const math::triangle_t *triangles, ray_t ray) {
+  static const uint32_t stack_size = 128;
+  uint32_t              stack[stack_size];
+
+  hit_t hit = hit_t();
+
+  uint32_t stack_top = 0;
+
+  if (!intersect_soa_aabb(soa_bvh, 0, ray).did_intersect()) return hit;
+
+  if (soa_bvh.is_leaf(0)) {
+    for (uint32_t i = 0; i < soa_bvh.prim_counts[0]; i++) {
+      const uint32_t triangle_index =
+          soa_bvh.prim_indices[soa_bvh.indexes[0] + i];
+      const math::triangle_t triangle     = triangles[triangle_index];
+      triangle_hit_t         triangle_hit = intersect_triangle(triangle, ray);
+      hit.triangle_intersections++;
+      if (triangle_hit.did_intersect()) {
+        ray.tmax       = triangle_hit.t;
+        hit.prim_index = triangle_index;
+        hit.t          = triangle_hit.t;
+        hit.u          = triangle_hit.u;
+        hit.v          = triangle_hit.v;
+      }
+    }
+    return hit;
+  }
+
+  uint32_t current = soa_bvh.indexes[0];
+
+  while (true) {
+    const uint32_t left  = current + 0;
+    const uint32_t right = current + 1;
+
+    hit.node_intersections += 1;
+    aabb_hit_t left_hit  = intersect_soa_aabb(soa_bvh, left, ray);
+    aabb_hit_t right_hit = intersect_soa_aabb(soa_bvh, right, ray);
+
+    uint32_t start = 0;
+    uint32_t end   = 0;
+    if (left_hit.did_intersect() && soa_bvh.is_leaf(left)) {
+      if (right_hit.did_intersect() && soa_bvh.is_leaf(right)) {
+        assert(soa_bvh.indexes[left] + soa_bvh.prim_counts[left] ==
+               soa_bvh.indexes[right]);
+        start = soa_bvh.indexes[left];
+        end   = soa_bvh.indexes[right] + soa_bvh.prim_counts[right];
+      } else {
+        start = soa_bvh.indexes[left];
+        end   = soa_bvh.indexes[left] + soa_bvh.prim_counts[left];
+      }
+    } else {
+      if (right_hit.did_intersect() && soa_bvh.is_leaf(right)) {
+        start = soa_bvh.indexes[right];
+        end   = soa_bvh.indexes[right] + soa_bvh.prim_counts[right];
+      }
+    }
+    for (uint32_t index = start; index < end; index++) {
+      const uint32_t         triangle_index = soa_bvh.prim_indices[index];
+      const math::triangle_t triangle       = triangles[triangle_index];
+      triangle_hit_t         triangle_hit   = intersect_triangle(triangle, ray);
+      hit.triangle_intersections++;
+      if (triangle_hit.did_intersect()) {
+        ray.tmax       = triangle_hit.t;
+        hit.prim_index = triangle_index;
+        hit.t          = triangle_hit.t;
+        hit.u          = triangle_hit.u;
+        hit.v          = triangle_hit.v;
+      }
+    }
+
+    if (left_hit.did_intersect() && !soa_bvh.is_leaf(left)) {
+      if (right_hit.did_intersect() && !soa_bvh.is_leaf(right)) {
+        if (stack_top >= stack_size) return hit;
+        if (left_hit.tmin <= right_hit.tmin) {
+          current            = soa_bvh.indexes[left];
+          stack[stack_top++] = soa_bvh.indexes[right];
+        } else {
+          current            = soa_bvh.indexes[right];
+          stack[stack_top++] = soa_bvh.indexes[left];
+        }
+      } else {
+        current = soa_bvh.indexes[left];
+      }
+    } else {
+      if (right_hit.did_intersect() && !soa_bvh.is_leaf(right)) {
+        current = soa_bvh.indexes[right];
+      } else {
+        if (stack_top == 0) return hit;
+        current = stack[--stack_top];
+      }
+    }
+  }
+  return hit;
+}
+
 }  // namespace bvh

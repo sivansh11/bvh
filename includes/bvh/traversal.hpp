@@ -59,6 +59,10 @@ aabb_hit_t     intersect_aabb(const math::vec3 _min, const math::vec3 _max,
                               const ray_t ray);
 hit_t          intersect_bvh(const bvh::node_t *nodes, const uint32_t *indices,
                              const math::triangle_t *triangles, ray_t ray);
+inline aabb_hit_t intersect_soa_aabb(const soa_bvh_t &soa_bvh,
+                                     const uint32_t node, const ray_t ray);
+hit_t intersect_soa_bvh(const soa_bvh_t        &soa_bvh,
+                        const math::triangle_t *triangles, ray_t ray);
 
 }  // namespace bvh
 

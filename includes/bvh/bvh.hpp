@@ -27,6 +27,18 @@ struct bvh_t {
   std::vector<uint32_t> prim_indices;
 };
 
+struct soa_bvh_t {
+  std::vector<math::vec4> mins;
+  std::vector<uint32_t>   indexes;
+  std::vector<math::vec4> maxs;
+  std::vector<uint32_t>   prim_counts;
+  std::vector<uint32_t>   prim_indices;
+
+  bool is_leaf(uint32_t i) const { return prim_counts[i] != 0; }
+  // math::aabb_t aabb(uint32_t i) const { return math::aabb_t{mins[i],
+  // maxs[i]}; }
+};
+
 struct blas_instance_t {
   math::mat4   inv_transform;
   math::aabb_t aabb;
@@ -65,6 +77,8 @@ float    epo_of_bvh(const bvh_t                         &bvh,
 
 void  save(const bvh_t &bvh, const std::filesystem::path &path);
 bvh_t load(const std::filesystem::path &path);
+
+soa_bvh_t convert(const bvh_t &bvh);
 
 }  // namespace bvh
 

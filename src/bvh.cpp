@@ -1382,4 +1382,22 @@ bvh_t load(const std::filesystem::path &path) {
   return bvh;
 }
 
+soa_bvh_t convert(const bvh_t &bvh) {
+  soa_bvh_t soa_bvh{.prim_indices = bvh.prim_indices};
+
+  soa_bvh.mins.resize(bvh.nodes.size());
+  soa_bvh.maxs.resize(bvh.nodes.size());
+  soa_bvh.indexes.resize(bvh.nodes.size());
+  soa_bvh.prim_counts.resize(bvh.nodes.size());
+
+  for (uint32_t i = 0; i < bvh.nodes.size(); i++) {
+    soa_bvh.mins[i]        = math::vec4(bvh.nodes[i].min, 0.f);
+    soa_bvh.maxs[i]        = math::vec4(bvh.nodes[i].max, 0.f);
+    soa_bvh.indexes[i]     = bvh.nodes[i].index;
+    soa_bvh.prim_counts[i] = bvh.nodes[i].prim_count;
+  }
+
+  return soa_bvh;
+}
+
 }  // namespace bvh
