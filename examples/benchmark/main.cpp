@@ -201,6 +201,7 @@ struct options_t {
   presplit_opts_t        presplit;
   post_processing_type_t post_processing = post_processing_type_t::e_none;
   reinsert_opts_t        reinsert;
+  bool                   use_soa = false;
 };
 
 void print_usage(std::ostream &stream) {
@@ -227,6 +228,8 @@ void print_usage(std::ostream &stream) {
          "0.1)\n"
       << "      --reinsert-itr <n>     reinsertion max iterations (default "
          "10)\n"
+      << "      --soa                 use SoA (vec4-padded) BVH traversal "
+         "instead of AoS\n"
       << "  -h, --help                  show this help and exit\n";
 }
 
@@ -388,6 +391,7 @@ options_t parse_options(int argc, char **argv) {
       {"reinsert", no_argument, nullptr, 1002},
       {"reinsert-ratio", required_argument, nullptr, 1003},
       {"reinsert-itr", required_argument, nullptr, 1004},
+      {"soa", no_argument, nullptr, 1005},
       {"help", no_argument, nullptr, 'h'},
       {nullptr, 0, nullptr, 0}};
 
@@ -426,6 +430,9 @@ options_t parse_options(int argc, char **argv) {
         break;
       case 1004:
         opts.reinsert.max_itr = parse_u32("reinsert-itr", optarg);
+        break;
+      case 1005:
+        opts.use_soa = true;
         break;
       case 'h':
       default:
@@ -523,7 +530,8 @@ void print_config(const options_t &opts, std::ostream &stream) {
            << ", max_itr=" << opts.reinsert.max_itr << ")\n";
   }
 
-  stream << "reruns: " << opts.reruns << " threads: " << opts.threads << '\n';
+  stream << "reruns: " << opts.reruns << " threads: " << opts.threads
+         << " traversal: " << (opts.use_soa ? "soa" : "aos") << '\n';
 }
 
 int main(int argc, char **argv) {
@@ -584,17 +592,25 @@ int main(int argc, char **argv) {
 
   image_t image{640, 420};
   // camera_t camera{90.f, {0, 1, 2}, {0, 1, 0}};
-  // camera_t camera{90.f, {0, 50, 0}, {1, 50, 0}};
-  camera_t camera{90.f, {0, 50, 0}, {-1, 50, 0}};
+  camera_t camera{90.f, {0, 1, 0}, {-1, 1, 0}};
+  // camera_t camera{90.f, {0, 50, 0}, {-1, 50, 0}};
   camera.set_dimensions(image.width, image.height);
+
+  bvh::soa_bvh_t soa_bvh;
+  if (opts.use_soa) soa_bvh = bvh::convert(bvh);
 
   for (uint32_t i = 0; i < opts.reruns; i++) {
     start = std::chrono::high_resolution_clock::now();
     render(opts.threads, image, [&](uint32_t x, uint32_t y) {
       auto [O, D]    = camera.ray_gen(x, y);
       bvh::ray_t ray = bvh::ray_t::create(O, D);
-      auto hit = bvh::intersect_bvh(bvh.nodes.data(), bvh.prim_indices.data(),
-                                    triangles.data(), ray);
+      bvh::hit_t hit;
+      if (opts.use_soa) {
+        hit = bvh::intersect_soa_bvh(soa_bvh, triangles.data(), ray);
+      } else {
+        hit = bvh::intersect_bvh(bvh.nodes.data(), bvh.prim_indices.data(),
+                                 triangles.data(), ray);
+      }
       // if (hit.did_intersect()) {
       return turbo_color_map(
           (hit.node_intersections + hit.triangle_intersections * 1.1f) / 150.f);
