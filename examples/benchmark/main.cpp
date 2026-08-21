@@ -201,7 +201,8 @@ struct options_t {
   presplit_opts_t        presplit;
   post_processing_type_t post_processing = post_processing_type_t::e_none;
   reinsert_opts_t        reinsert;
-  bool                   use_soa = false;
+  bool                   use_soa  = false;
+  bool                   use_slab = false;
 };
 
 void print_usage(std::ostream &stream) {
@@ -230,6 +231,8 @@ void print_usage(std::ostream &stream) {
          "10)\n"
       << "      --soa                 use SoA (vec4-padded) BVH traversal "
          "instead of AoS\n"
+      << "      --slab                use sign-based optimized slab test "
+         "traversal (combinable with --soa)\n"
       << "  -h, --help                  show this help and exit\n";
 }
 
@@ -392,6 +395,7 @@ options_t parse_options(int argc, char **argv) {
       {"reinsert-ratio", required_argument, nullptr, 1003},
       {"reinsert-itr", required_argument, nullptr, 1004},
       {"soa", no_argument, nullptr, 1005},
+      {"slab", no_argument, nullptr, 1006},
       {"help", no_argument, nullptr, 'h'},
       {nullptr, 0, nullptr, 0}};
 
@@ -433,6 +437,9 @@ options_t parse_options(int argc, char **argv) {
         break;
       case 1005:
         opts.use_soa = true;
+        break;
+      case 1006:
+        opts.use_slab = true;
         break;
       case 'h':
       default:
@@ -531,7 +538,10 @@ void print_config(const options_t &opts, std::ostream &stream) {
   }
 
   stream << "reruns: " << opts.reruns << " threads: " << opts.threads
-         << " traversal: " << (opts.use_soa ? "soa" : "aos") << '\n';
+         << " traversal: "
+         << (opts.use_soa ? (opts.use_slab ? "soa+slab" : "soa")
+                          : (opts.use_slab ? "slab" : "aos"))
+         << '\n';
 }
 
 int main(int argc, char **argv) {
@@ -605,8 +615,13 @@ int main(int argc, char **argv) {
       auto [O, D]    = camera.ray_gen(x, y);
       bvh::ray_t ray = bvh::ray_t::create(O, D);
       bvh::hit_t hit;
-      if (opts.use_soa) {
+      if (opts.use_soa && opts.use_slab) {
+        hit = bvh::intersect_soa_bvh_slab(soa_bvh, triangles.data(), ray);
+      } else if (opts.use_soa) {
         hit = bvh::intersect_soa_bvh(soa_bvh, triangles.data(), ray);
+      } else if (opts.use_slab) {
+        hit = bvh::intersect_bvh_slab(bvh.nodes.data(), bvh.prim_indices.data(),
+                                      triangles.data(), ray);
       } else {
         hit = bvh::intersect_bvh(bvh.nodes.data(), bvh.prim_indices.data(),
                                  triangles.data(), ray);
