@@ -63,6 +63,16 @@ inline aabb_hit_t intersect_soa_aabb(const soa_bvh_t &soa_bvh,
                                      const uint32_t node, const ray_t ray);
 hit_t intersect_soa_bvh(const soa_bvh_t        &soa_bvh,
                         const math::triangle_t *triangles, ray_t ray);
+template <bool posX, bool posY, bool posZ>
+hit_t intersect_bvh_slab(const bvh::node_t *nodes, const uint32_t *indices,
+                         const math::triangle_t *triangles, ray_t ray);
+hit_t intersect_bvh_slab(const bvh::node_t *nodes, const uint32_t *indices,
+                         const math::triangle_t *triangles, ray_t ray);
+template <bool posX, bool posY, bool posZ>
+hit_t intersect_soa_bvh_slab(const soa_bvh_t        &soa_bvh,
+                             const math::triangle_t *triangles, ray_t ray);
+hit_t intersect_soa_bvh_slab(const soa_bvh_t        &soa_bvh,
+                             const math::triangle_t *triangles, ray_t ray);
 
 }  // namespace bvh
 
